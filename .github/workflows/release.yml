@@ -57,11 +57,11 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: WaEnhancer ${{ steps.vars.outputs.version }}
+          name: WhatsPosed ${{ steps.vars.outputs.version }}
           body_path: changelog.txt
           files: |
-            app/build/outputs/apk/whatsapp/release/WaEnhancer*.apk
-            app/build/outputs/apk/business/release/WaEnhancer-Business*.apk
+            app/build/outputs/apk/whatsapp/release/WhatsPosed*.apk
+            app/build/outputs/apk/business/release/WhatsPosed-Business*.apk
           tag_name: ${{ steps.vars.outputs.tag }}
 
       - name: Upload Proguard mappings

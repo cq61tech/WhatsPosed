@@ -109,7 +109,7 @@ class RecordingsFragment : Fragment(), RecordingsAdapter.OnRecordingActionListen
         addBaseDir(
             dirs,
             addedPaths,
-            File(Environment.getExternalStorageDirectory(), "Music/WaEnhancer/Recordings")
+            File(Environment.getExternalStorageDirectory(), "Music/WhatsPosed/Recordings")
         )
         return dirs
     }

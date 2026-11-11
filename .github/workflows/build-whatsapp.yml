@@ -45,11 +45,11 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: WaEnhancer
-          path: app/build/outputs/apk/whatsapp/release/WaEnhancer*.apk
+          name: WhatsPosed
+          path: app/build/outputs/apk/whatsapp/release/WhatsPosed*.apk
 
       - name: Upload Proguard mapping
         uses: actions/upload-artifact@v7
         with:
-          name: WaEnhancer-mapping
+          name: WhatsPosed-mapping
           path: app/build/outputs/mapping/whatsappRelease/mapping.txt

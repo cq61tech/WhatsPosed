@@ -576,7 +576,7 @@ class CallRecording(
     }
 
     /**
-     * Public fallback when the bridge is unavailable. Uses Music/WaEnhancer/Recordings, which is
+     * Public fallback when the bridge is unavailable. Uses Music/WhatsPosed/Recordings, which is
      * one of the folders scanned by the Recordings screen in the WAE app.
      */
     private fun openPublicOutputTarget(fileName: String): OutputTarget? {

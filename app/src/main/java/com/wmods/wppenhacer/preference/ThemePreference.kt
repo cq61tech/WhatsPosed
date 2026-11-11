@@ -150,7 +150,7 @@ class ThemePreference(context: Context, attrs: AttributeSet?) : Preference(conte
 
     private fun createNewFolder(folderName: String) {
         val themesRoot =
-            File(Environment.getExternalStorageDirectory(), "Download/WaEnhancer/themes")
+            File(Environment.getExternalStorageDirectory(), "Download/WhatsPosed/themes")
         val newFolder = File(themesRoot, folderName)
         if (!newFolder.exists() && newFolder.mkdirs()) {
             mainDialog?.dismiss()
@@ -171,7 +171,7 @@ class ThemePreference(context: Context, attrs: AttributeSet?) : Preference(conte
                     val entryName = zipEntry.name
                     val root = File(
                         Environment.getExternalStorageDirectory(),
-                        "Download/WaEnhancer/themes"
+                        "Download/WhatsPosed/themes"
                     )
                     val lastSlashIndex = entryName.lastIndexOf('/')
                     val folderName: String

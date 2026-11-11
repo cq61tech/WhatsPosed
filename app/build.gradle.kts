@@ -31,17 +31,17 @@ android {
         create("business") {
             dimension = "version"
             applicationIdSuffix = ".w4b"
-            resValue("string", "app_name", "Wa Enhancer Business")
+            resValue("string", "app_name", "WhatsPosed Business")
         }
     }
 
     defaultConfig {
-        applicationId = "com.wmods.wppenhacer"
+        applicationId = "com.cq61tech.whatsposed"
         minSdk = 28
         //noinspection OldTargetApi
         targetSdk = 34
-        versionCode = 164
-        versionName = "1.6.4 ($gitHash)"
+        versionCode = 1
+        versionName = "0.1.0 ($gitHash)"
         multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -144,8 +144,8 @@ android {
 androidComponents {
     onVariants { variant ->
         val appName = when (variant.flavorName) {
-            "business" -> "WaEnhancer-Business"
-            else -> "WaEnhancer"
+            "business" -> "WhatsPosed-Business"
+            else -> "WhatsPosed"
         }
         variant.outputs.forEach { output ->
             output.outputFileName.set(output.versionName.map { "$appName-$it.apk" })

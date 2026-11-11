@@ -145,7 +145,7 @@ class App : ModuleApplication() {
             get() {
                 val download =
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val waEnhancerFolder = File(download, "WaEnhancer")
+                val waEnhancerFolder = File(download, "WhatsPosed")
                 if (!waEnhancerFolder.exists()) waEnhancerFolder.mkdirs()
                 return waEnhancerFolder
             }
@@ -153,7 +153,7 @@ class App : ModuleApplication() {
         @Suppress("SimplifyBooleanWithConstants", "KotlinConstantConditions")
         @JvmStatic
         val isOriginalPackage: Boolean
-            get() = BuildConfig.APPLICATION_ID == "com.wmods.wppenhacer"
+            get() = BuildConfig.APPLICATION_ID == "com.cq61tech.whatsposed"
 
 
     }
