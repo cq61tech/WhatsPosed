@@ -11,7 +11,8 @@ GRADLE=app/build.gradle.kts
 JAVA=app/src/main/java/com/wmods/wppenhacer
 RES=app/src/main/res
 
-for d in $RES/values-night $RES/values-notnight; do
+rm -f $RES/values-night/theme_whatsposed.xml $RES/values-notnight/theme_whatsposed.xml
+for d in $RES/values-night-v28 $RES/values-notnight-v28; do
     if grep -ls 'name="ThemeOverlay.MaterialGreen"' $d/* 2>/dev/null | grep -qv 'theme_whatsposed.xml'; then
         echo "duplicate overlay in $d"
         exit 1
