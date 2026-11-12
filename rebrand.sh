@@ -3,13 +3,20 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.1.0"
-VERSION_CODE="1"
+VERSION_NAME="0.2.0"
+VERSION_CODE="2"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
 JAVA=app/src/main/java/com/wmods/wppenhacer
 RES=app/src/main/res
+
+for d in $RES/values-night $RES/values-notnight; do
+    if grep -ls 'name="ThemeOverlay.MaterialGreen"' $d/* 2>/dev/null | grep -qv 'theme_whatsposed.xml'; then
+        echo "duplicate overlay in $d"
+        exit 1
+    fi
+done
 
 sed -i "s/applicationId = \"com\.wmods\.wppenhacer\"/applicationId = \"$APP_ID\"/" $GRADLE
 sed -i "s/versionCode = [0-9]*/versionCode = $VERSION_CODE/" $GRADLE
@@ -41,6 +48,8 @@ fi
 
 sed -i '/name="about_info"/ s#\\n\\nBased on [A-Za-z]* by Dev4Mod (GPL-3\.0)\.##' $RES/values/strings.xml
 sed -i '/name="about_info"/ s#</string>#\\n\\nBased on WaEnhancer by Dev4Mod (GPL-3.0).</string>#' $RES/values/strings.xml
+
+sed -i '/android:background="@color\/nav_background"/d' $RES/layout/activity_main.xml
 
 echo "--- remaining ---"
 grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true

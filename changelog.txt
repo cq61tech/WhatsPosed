@@ -1,5 +1,5 @@
-WhatsPosed 0.1.0
+WhatsPosed 0.2.0
 
-- Rebranded from WaEnhancer
-- New adaptive launcher icon with themed icon support
-- Update checks now use the releases of this repository
+- Rebuilt light and dark color schemes for every color preset
+- Flat status cards and top bar with larger corner radii
+- Tonal bottom navigation bar

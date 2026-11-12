@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary_background">#111410</color>
+    <color name="background_color">#111410</color>
+    <color name="surface_color">#191C18</color>
+    <color name="surface_elevated">#1D201C</color>
+    <color name="surface_container">#1D201C</color>
+    <color name="surface_container_high">#282B26</color>
+    <color name="nav_background">#1D201C</color>
+    <color name="text_primary">#E1E3DC</color>
+    <color name="text_secondary">#C3C8BE</color>
+    <color name="text_tertiary">#8D9289</color>
+</resources>
