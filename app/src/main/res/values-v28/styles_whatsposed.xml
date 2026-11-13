@@ -12,4 +12,10 @@
         <item name="android:textColor">@color/text_on_gradient</item>
         <item name="android:alpha">0.9</item>
     </style>
+
+    <style name="ToolbarTitleStyle" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textSize">26sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
 </resources>

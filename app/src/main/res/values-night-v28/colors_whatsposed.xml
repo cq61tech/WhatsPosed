@@ -10,4 +10,5 @@
     <color name="text_primary">#E1E3DC</color>
     <color name="text_secondary">#C3C8BE</color>
     <color name="text_tertiary">#8D9289</color>
+    <color name="text_on_gradient">#E1E3DC</color>
 </resources>

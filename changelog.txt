@@ -1,6 +1,5 @@
-WhatsPosed 0.2.1
+WhatsPosed 0.2.2
 
-- New header card on the home screen
-- Floating bottom navigation bar
-- Larger status card titles
-- Header text available in all supported languages
+- System colors (Monet) are now the default
+- Flat top bar without the large logo
+- Tonal status cards that follow the system palette

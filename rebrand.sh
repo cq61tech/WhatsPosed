@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.2.1"
-VERSION_CODE="3"
+VERSION_NAME="0.2.2"
+VERSION_CODE="4"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -63,6 +63,13 @@ fi
 
 if ! grep -A1 'id/nav_shadow' $RES/layout/activity_main.xml | grep -q 'visibility="gone"'; then
     sed -i 's#android:id="@+id/nav_shadow"#android:id="@+id/nav_shadow"\n        android:visibility="gone"#' $RES/layout/activity_main.xml
+fi
+
+sed -i '/app:logo="@mipmap\/launcher"/d; s/app:elevation="4dp"/app:elevation="0dp"/' $RES/layout/activity_main.xml
+
+grep -rl 'wae_color_mode' app/src/main/java | xargs -r sed -i 's/getString("wae_color_mode", "preset")/getString("wae_color_mode", "monet")/g'
+if [ -d $RES/xml ]; then
+    grep -rl 'wae_color_mode' $RES/xml | xargs -r sed -i 's/android:defaultValue="preset"/android:defaultValue="monet"/'
 fi
 
 echo "--- remaining ---"

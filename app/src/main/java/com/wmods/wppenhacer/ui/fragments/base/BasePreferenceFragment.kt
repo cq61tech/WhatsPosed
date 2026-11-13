@@ -236,7 +236,7 @@ abstract class BasePreferenceFragment : PreferenceFragmentCompat(),
             App.setThemeMode(prefs.getString("thememode", "0")!!.toInt())
         }
 
-        val colorMode = prefs.getString("wae_color_mode", "preset")
+        val colorMode = prefs.getString("wae_color_mode", "monet")
         val useMonet =
             Objects.equals(colorMode, "monet") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         setPreferenceState("wae_color_preset", !useMonet)

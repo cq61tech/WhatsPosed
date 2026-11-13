@@ -20,7 +20,7 @@ open class BaseActivity : AppCompatActivity() {
 
     private fun applyThemeOverlay() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val colorMode = prefs.getString("wae_color_mode", "preset")
+        val colorMode = prefs.getString("wae_color_mode", "monet")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && colorMode == "monet") return
 
         val colorPreset = prefs.getString("wae_color_preset", "green")

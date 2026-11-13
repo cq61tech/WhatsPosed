@@ -10,4 +10,5 @@
     <color name="text_primary">#191C18</color>
     <color name="text_secondary">#434841</color>
     <color name="text_tertiary">#737970</color>
+    <color name="text_on_gradient">#191C18</color>
 </resources>
