@@ -1,5 +1,6 @@
-WhatsPosed 0.2.0
+WhatsPosed 0.2.1
 
-- Rebuilt light and dark color schemes for every color preset
-- Flat status cards and top bar with larger corner radii
-- Tonal bottom navigation bar
+- New header card on the home screen
+- Floating bottom navigation bar
+- Larger status card titles
+- Header text available in all supported languages

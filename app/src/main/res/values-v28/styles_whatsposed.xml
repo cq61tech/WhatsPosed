@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="StatusCardTitle">
+        <item name="android:textAppearance">?textAppearanceTitleLarge</item>
+        <item name="android:textColor">@color/text_on_gradient</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="StatusCardSummary">
+        <item name="android:textAppearance">?textAppearanceBodyLarge</item>
+        <item name="android:textColor">@color/text_on_gradient</item>
+        <item name="android:alpha">0.9</item>
+    </style>
+</resources>

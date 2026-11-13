@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.2.0"
-VERSION_CODE="2"
+VERSION_NAME="0.2.1"
+VERSION_CODE="3"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -51,6 +51,19 @@ sed -i '/name="about_info"/ s#\\n\\nBased on [A-Za-z]* by Dev4Mod (GPL-3\.0)\.##
 sed -i '/name="about_info"/ s#</string>#\\n\\nBased on WaEnhancer by Dev4Mod (GPL-3.0).</string>#' $RES/values/strings.xml
 
 sed -i '/android:background="@color\/nav_background"/d' $RES/layout/activity_main.xml
+
+if ! grep -q 'id/hero_card' $RES/layout/fragment_home.xml; then
+    sed -i '/tools:context="\.ui\.activity\.MainActivity">/r patches/hero_card.xml' $RES/layout/fragment_home.xml
+fi
+grep -q 'id/hero_card' $RES/layout/fragment_home.xml || echo "hero card was not inserted"
+
+if ! grep -q 'wp_nav_floating' $RES/layout/activity_main.xml; then
+    sed -i 's#style="@style/BottomNavStyle"#style="@style/BottomNavStyle"\n        android:background="@drawable/wp_nav_floating"\n        android:layout_marginStart="16dp"\n        android:layout_marginEnd="16dp"\n        android:layout_marginBottom="12dp"#' $RES/layout/activity_main.xml
+fi
+
+if ! grep -A1 'id/nav_shadow' $RES/layout/activity_main.xml | grep -q 'visibility="gone"'; then
+    sed -i 's#android:id="@+id/nav_shadow"#android:id="@+id/nav_shadow"\n        android:visibility="gone"#' $RES/layout/activity_main.xml
+fi
 
 echo "--- remaining ---"
 grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true

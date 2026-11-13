@@ -36,6 +36,50 @@
                 android:paddingBottom="@dimen/spacing_large"
                 tools:context=".ui.activity.MainActivity">
 
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/hero_card"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_marginBottom="@dimen/spacing_medium"
+        app:cardCornerRadius="32dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:src="@drawable/hero_sky" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/wp_hero_scrim" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:padding="24dp"
+                android:text="@string/wp_hero_tagline"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:lineSpacingMultiplier="1.05"
+                android:shadowColor="#66000000"
+                android:shadowDx="0"
+                android:shadowDy="2"
+                android:shadowRadius="6" />
+
+        </FrameLayout>
+    </com.google.android.material.card.MaterialCardView>
+
                 <com.google.android.material.card.MaterialCardView
                     android:id="@+id/status"
                     android:layout_width="match_parent"
