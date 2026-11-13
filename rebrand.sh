@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.2.2"
-VERSION_CODE="4"
+VERSION_NAME="0.3.0"
+VERSION_CODE="5"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -69,7 +69,7 @@ sed -i '/app:logo="@mipmap\/launcher"/d; s/app:elevation="4dp"/app:elevation="0d
 
 grep -rl 'wae_color_mode' app/src/main/java | xargs -r sed -i 's/getString("wae_color_mode", "preset")/getString("wae_color_mode", "monet")/g'
 if [ -d $RES/xml ]; then
-    grep -rl 'wae_color_mode' $RES/xml | xargs -r sed -i 's/android:defaultValue="preset"/android:defaultValue="monet"/'
+    grep -rl 'wae_color_mode' $RES/xml | xargs -r sed -i 's/\(android\|app\):defaultValue="preset"/\1:defaultValue="monet"/'
 fi
 
 echo "--- remaining ---"

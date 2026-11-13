@@ -1,5 +1,5 @@
-WhatsPosed 0.2.2
+WhatsPosed 0.3.0
 
-- System colors (Monet) are now the default
-- Flat top bar without the large logo
-- Tonal status cards that follow the system palette
+- Redesigned home screen with a large status card and side-by-side tiles
+- Monet is the default color source
+- Flat top bar and tonal cards that follow the system palette

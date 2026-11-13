@@ -13,7 +13,7 @@
             app:title="@string/theme_mode" />
 
         <ListPreference
-            app:defaultValue="preset"
+            app:defaultValue="monet"
             app:entries="@array/wae_color_mode_entries"
             app:entryValues="@array/wae_color_mode_values"
             app:key="wae_color_mode"
