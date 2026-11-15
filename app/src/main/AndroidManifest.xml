@@ -147,5 +147,6 @@
                 <action android:name="android.support.customtabs.action.CustomTabsService"/>
             </intent-filter>
         </receiver>
+        <activity android:name=".activities.AppearanceActivity" android:theme="@style/AppTheme" />
     </application>
 </manifest>

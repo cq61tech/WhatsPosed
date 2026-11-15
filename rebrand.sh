@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.3.0"
-VERSION_CODE="5"
+VERSION_NAME="0.4.0"
+VERSION_CODE="6"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -71,6 +71,29 @@ grep -rl 'wae_color_mode' app/src/main/java | xargs -r sed -i 's/getString("wae_
 if [ -d $RES/xml ]; then
     grep -rl 'wae_color_mode' $RES/xml | xargs -r sed -i 's/\(android\|app\):defaultValue="preset"/\1:defaultValue="monet"/'
 fi
+
+if ! grep -q 'kotlinCompose' gradle/libs.versions.toml; then
+    sed -i '/^kotlinAndroid = /a kotlinCompose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }' gradle/libs.versions.toml
+fi
+if ! grep -q 'kotlinCompose' build.gradle.kts; then
+    sed -i '/alias(libs.plugins.kotlinAndroid) apply false/a\    alias(libs.plugins.kotlinCompose) apply false' build.gradle.kts
+fi
+if ! grep -q 'kotlinCompose' $GRADLE; then
+    sed -i '/alias(libs.plugins.kspPlugin)/a\    alias(libs.plugins.kotlinCompose)' $GRADLE
+fi
+if ! grep -q 'compose-bom' $GRADLE; then
+    sed -i '/implementation(libs.androidx.datastore.preferences)/a\    implementation(platform("androidx.compose:compose-bom:2026.05.00"))\n    implementation("androidx.compose.material3:material3")\n    implementation("androidx.compose.ui:ui")\n    implementation("androidx.compose.foundation:foundation")\n    implementation("androidx.compose.animation:animation")\n    implementation("androidx.activity:activity-compose:1.13.0")' $GRADLE
+fi
+
+if ! grep -q 'AppearanceActivity' app/src/main/AndroidManifest.xml; then
+    sed -i 's#</application>#    <activity android:name=".activities.AppearanceActivity" android:theme="@style/AppTheme" />\n    </application>#' app/src/main/AndroidManifest.xml
+fi
+
+for f in .github/workflows/build-whatsapp.yml .github/workflows/build-business.yml .github/workflows/release.yml; do
+    if [ -f "$f" ] && ! grep -q 'Fetch fonts' "$f"; then
+        sed -i '/run: chmod +x gradlew/r patches/fetch_fonts.yml' "$f"
+    fi
+done
 
 echo "--- remaining ---"
 grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true

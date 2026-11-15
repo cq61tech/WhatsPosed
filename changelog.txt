@@ -1,5 +1,5 @@
-WhatsPosed 0.3.0
+WhatsPosed 0.4.0
 
-- Redesigned home screen with a large status card and side-by-side tiles
-- Monet is the default color source
-- Flat top bar and tonal cards that follow the system palette
+- New interface built from scratch with Material 3 Expressive
+- Colors follow the wallpaper (Monet) by default
+- New home screen, floating bottom dock and appearance settings
