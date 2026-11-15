@@ -12,6 +12,7 @@ import com.wmods.wppenhacer.databinding.ActivityAboutBinding
 
 class AboutActivity : BaseActivity() {
     private val contributors = arrayOf(
+        arrayOf("cq61tech", "https://github.com/cq61tech"),
         arrayOf("Dev4Mod", "https://github.com/Dev4Mod"),
         arrayOf("frknkrc44", "https://github.com/frknkrc44"),
         arrayOf("mubashardev", "https://github.com/mubashardev"),

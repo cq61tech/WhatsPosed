@@ -1,5 +1,4 @@
-WhatsPosed 0.4.0
+WhatsPosed 0.4.1
 
-- New interface built from scratch with Material 3 Expressive
-- Colors follow the wallpaper (Monet) by default
-- New home screen, floating bottom dock and appearance settings
+- Fixed unreadable header text on the home screen
+- Added cq61tech to the contributors and developer credit

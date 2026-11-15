@@ -324,7 +324,7 @@
     <string name="select_status_type">Select status type</string>
     <string name="open_camera">Open Camera</string>
     <string name="edit_text">Edit Text</string>
-    <string name="developer" translatable="false">Developer: Dev4Mod</string>
+    <string name="developer" translatable="false">Developer: cq61tech</string>
     <string name="about_info">WhatsPosed is an Xposed module that enhances your WhatsApp experience by offering advanced privacy features, home screen customization, general tweaks, and media improvements.\n\nBased on WaEnhancer by Dev4Mod (GPL-3.0).</string>
     <string name="installation">Installation</string>
     <string name="installation_desc">1. Ensure that your device is rooted.\n2. Install the Xposed Framework on your device.\n3. Download the WhatsPosed from the Actions section.\n4. Install the WhatsPosed APK.\n5. Enable the WhatsPosed module in the Xposed Installer app.</string>

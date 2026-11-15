@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.4.0"
-VERSION_CODE="6"
+VERSION_NAME="0.4.1"
+VERSION_CODE="7"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -95,6 +95,13 @@ for f in .github/workflows/build-whatsapp.yml .github/workflows/build-business.y
     fi
 done
 
+ABOUT=$JAVA/activities/AboutActivity.kt
+if ! grep -q 'arrayOf("cq61tech"' $ABOUT; then
+    sed -i 's#^\( *\)arrayOf("Dev4Mod", "https://github.com/Dev4Mod"),#\1arrayOf("cq61tech", "https://github.com/cq61tech"),\n\1arrayOf("Dev4Mod", "https://github.com/Dev4Mod"),#' $ABOUT
+fi
+find $RES -type f -name '*.xml' -print0 | xargs -0 sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
+grep -rl 'Developer *: *Dev4Mod' app/src/main/java | xargs -r sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
+
 echo "--- remaining ---"
-grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true
+grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/\|Dev4Mod' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true
 echo "--- done ---"
