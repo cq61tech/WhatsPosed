@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.4.1"
-VERSION_CODE="7"
+VERSION_NAME="0.5.0"
+VERSION_CODE="8"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -101,6 +101,12 @@ if ! grep -q 'arrayOf("cq61tech"' $ABOUT; then
 fi
 find $RES -type f -name '*.xml' -print0 | xargs -0 sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
 grep -rl 'Developer *: *Dev4Mod' app/src/main/java | xargs -r sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
+
+sed -i 's#actions/checkout@v7#actions/checkout@v4#; s#actions/setup-java@v5\.6\.0#actions/setup-java@v4#; s#actions/upload-artifact@v7#actions/upload-artifact@v4#; s#softprops/action-gh-release@v3#softprops/action-gh-release@v2#' .github/workflows/*.yml
+if grep -q 'name: Read changelog' .github/workflows/release.yml; then
+    sed -i '/- name: Read changelog/,$d' .github/workflows/release.yml
+fi
+sed -i '/^    env:$/d; /BOT_TOKEN: /d; /CHANNEL_ID: /d' .github/workflows/release.yml
 
 echo "--- remaining ---"
 grep -rIn 'WaEnhancer\|Wa Enhancer\|WAE\|t\.me/\|Dev4Mod' app/src .github --include=*.kt --include=*.java --include=*.xml --include=*.yml --include=*.kts --include=*.prop --exclude-dir=cpp | grep -v 'CallRecording\.kt' | grep -v 'Based on WaEnhancer' || true

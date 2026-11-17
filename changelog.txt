@@ -1,4 +1,4 @@
-WhatsPosed 0.4.1
+WhatsPosed 0.5.0
 
-- Fixed unreadable header text on the home screen
-- Added cq61tech to the contributors and developer credit
+- Synced with upstream WaEnhancer 1.6.5
+- Added support for WhatsApp and WhatsApp Business 2.26.44.xx
