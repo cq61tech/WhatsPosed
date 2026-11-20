@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.5.1"
-VERSION_CODE="9"
+VERSION_NAME="0.6.0"
+VERSION_CODE="10"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
