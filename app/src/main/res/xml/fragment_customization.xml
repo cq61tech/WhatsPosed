@@ -184,19 +184,10 @@
             app:title="@string/menuwicon" />
 
 
-        <rikka.material.preference.MaterialSwitchPreference
-            app:key="floating_bottom_bar"
-            app:summary="@string/floating_bottom_bar_sum"
-            app:title="@string/floating_bottom_bar" />
-
-        <SeekBarPreference
-            android:defaultValue="24"
-            android:max="64"
-            app:dependency="floating_bottom_bar"
-            app:key="floating_bottom_bar_radius"
-            app:min="0"
-            app:showSeekBarValue="true"
-            app:title="@string/floating_bottom_bar_radius" />
+        <Preference
+            app:key="floating_bottom_bar_editor"
+            app:summary="@string/wpfb_home_summary"
+            app:title="@string/wpfb_title" />
 
         <rikka.material.preference.MaterialSwitchPreference
             app:key="native_floating_navigation"
