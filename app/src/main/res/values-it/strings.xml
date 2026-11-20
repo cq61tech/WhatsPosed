@@ -562,10 +562,6 @@
     <string name="app_version_s_supported">Versione %1$s · supportata</string>
     <string name="app_version_s_unsupported">Versione %1$s · non supportata</string>
     <string name="app_installed_version_unknown">Installato · versione non disponibile</string>
-    <string name="floating_bottom_bar">Barra inferiore flottante</string>
-    <string name="floating_bottom_bar_sum">Attiva la barra di navigazione inferiore flottante in stile iOS</string>
-    <string name="floating_bottom_bar_radius">Raggio degli angoli della barra inferiore</string>
-    <string name="floating_bottom_bar_radius_sum">Regola il raggio degli angoli della barra inferiore flottante</string>
     <string name="disable_swipe_up_in_group">Disattiva lo scorrimento verso l’alto nei gruppi</string>
     <string name="disable_swipe_up_in_group_sum">Disattiva il gesto di scorrimento verso l’alto nelle chat di gruppo</string>
     <string name="force_disable_emojis">Forza la disattivazione delle emoji</string>
