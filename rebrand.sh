@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.5.0"
-VERSION_CODE="8"
+VERSION_NAME="0.5.1"
+VERSION_CODE="9"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -85,6 +85,9 @@ if ! grep -q 'compose-bom' $GRADLE; then
     sed -i '/implementation(libs.androidx.datastore.preferences)/a\    implementation(platform("androidx.compose:compose-bom:2026.05.00"))\n    implementation("androidx.compose.material3:material3")\n    implementation("androidx.compose.ui:ui")\n    implementation("androidx.compose.foundation:foundation")\n    implementation("androidx.compose.animation:animation")\n    implementation("androidx.activity:activity-compose:1.13.0")' $GRADLE
 fi
 
+if ! grep -q 'FloatingBarActivity' app/src/main/AndroidManifest.xml; then
+    sed -i 's#</application>#    <activity android:name=".activities.FloatingBarActivity" android:theme="@style/AppTheme" />\n    </application>#' app/src/main/AndroidManifest.xml
+fi
 if ! grep -q 'AppearanceActivity' app/src/main/AndroidManifest.xml; then
     sed -i 's#</application>#    <activity android:name=".activities.AppearanceActivity" android:theme="@style/AppTheme" />\n    </application>#' app/src/main/AndroidManifest.xml
 fi

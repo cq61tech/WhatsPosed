@@ -27,6 +27,7 @@ class ComposeHomeFragment : Fragment() {
                         onAbout = { host.openAbout() },
                         onTools = { host.showTools() },
                         onBattery = { host.requestBatteryOptimization() },
+                        onFloatingBar = { host.openFloatingBar() },
                     )
                 }
             }

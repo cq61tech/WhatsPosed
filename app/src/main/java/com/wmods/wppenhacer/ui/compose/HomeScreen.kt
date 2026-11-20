@@ -138,6 +138,7 @@ private fun HomeContent(
     onAbout: () -> Unit,
     onTools: () -> Unit,
     onBattery: () -> Unit,
+    onFloatingBar: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val cs = MaterialTheme.colorScheme
@@ -388,6 +389,15 @@ private fun HomeContent(
             InfoRow("Android", "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         }
 
+        SectionCard(stringResource(R.string.wpfb_title)) {
+            Text(
+                stringResource(R.string.wpfb_home_summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = cs.onSurfaceVariant,
+            )
+            WideOutlinedButton(stringResource(R.string.wpfb_open), onClick = onFloatingBar)
+        }
+
         SectionCard(stringResource(R.string.wpui_tools)) {
             Text(
                 stringResource(R.string.wpui_tools_summary),
@@ -410,8 +420,9 @@ fun HomeScreen(
     onAbout: () -> Unit,
     onTools: () -> Unit,
     onBattery: () -> Unit,
+    onFloatingBar: () -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-        HomeContent(lifecycle, onSearch, onAppearance, onAbout, onTools, onBattery)
+        HomeContent(lifecycle, onSearch, onAppearance, onAbout, onTools, onBattery, onFloatingBar)
     }
 }

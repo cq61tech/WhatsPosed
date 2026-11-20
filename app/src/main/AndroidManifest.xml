@@ -148,5 +148,6 @@
             </intent-filter>
         </receiver>
         <activity android:name=".activities.AppearanceActivity" android:theme="@style/AppTheme" />
+        <activity android:name=".activities.FloatingBarActivity" android:theme="@style/AppTheme" />
     </application>
 </manifest>

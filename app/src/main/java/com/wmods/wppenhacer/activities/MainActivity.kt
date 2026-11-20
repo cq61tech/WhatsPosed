@@ -213,6 +213,10 @@ class MainActivity : BaseActivity() {
         startActivity(Intent(this, AppearanceActivity::class.java))
     }
 
+    fun openFloatingBar() {
+        startActivity(Intent(this, FloatingBarActivity::class.java))
+    }
+
     @SuppressLint("BatteryLife")
     fun requestBatteryOptimization() {
         if (batteryPermissionHelper.isBatterySaverPermissionAvailable(this, true)) {

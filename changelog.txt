@@ -1,13 +1,7 @@
-[NEW]
-* Added support for WhatsApp and WhatsApp Business 2.26.44.xx
-* Added the "Restore stickers" option (General > Conversation > Stickers), which copies every saved sticker back to Favorites. It requires root
-* Added the "Native floating navigation" option, which turns on WhatsApp's own floating bottom bar (Android 11+), with optional background and selection colors. It can't be used together with the module's "Floating Bottom Bar"
-* Statuses can now be downloaded even before WhatsApp has downloaded them, with a progress dialog that can be cancelled
-* A notification now shows the loading progress of the features while they are prepared after a WhatsApp or module update
+WhatsPosed 0.5.1
 
-[FIXED]
-* Fixed "Remove sticker white outline" not loading on newer WhatsApp versions
-* Fixed the locked chats option not loading on newer WhatsApp versions
-* Fixed the blue tick for voice messages and other media not being sent on newer WhatsApp versions
-* Fixed WhatsApp sometimes crashing when filtering the chat list with "Separate Groups" or "Filter Groups" turned on
-* Fixed the custom theme and other features failing to load when WhatsApp can't read its active account file
+- New floating bottom bar editor with live preview
+- Frosted glass, oval indicator, custom icon colors, icon size, label options
+- Hide the bar while scrolling (slide or fade)
+- Style presets: Classic, Enhanced, iOS frosted glass
+- New screens available in all supported languages
