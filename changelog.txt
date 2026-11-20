@@ -1,7 +1,18 @@
-WhatsPosed 0.5.1
+[NEW]
+* Added support for WhatsApp and WhatsApp Business 2.26.45.xx
+* Custom Privacy now uses a dropdown for each option (Default, Enabled, Disabled), showing the global state. Contacts are removed from the list when every option follows the global setting
+* Locked contacts are now hidden from the calls history, contact picker lists, status updates and status playback
+* "Remove sticker white outline" now also removes the outline from the sticker style and video frames
+* Disabling Meta AI now also turns off the remaining Meta AI features (search, voice, imagine, home tab, studio bots, assist and prompts)
 
-- New floating bottom bar editor with live preview
-- Frosted glass, oval indicator, custom icon colors, icon size, label options
-- Hide the bar while scrolling (slide or fade)
-- Style presets: Classic, Enhanced, iOS frosted glass
-- New screens available in all supported languages
+[IMPROVED]
+* Faster startup and lower CPU usage while WhatsApp is running
+
+[FIXED]
+* Fixed high CPU usage in system_server on Android 11/12
+* Fixed root diagnostics freezing the app and the log dialog stopping before the run finished
+* Fixed contact verification failing on newer WhatsApp versions
+* Fixed keyboxes with a PKCS#8 private key not loading, and empty keybox entries causing errors
+* Fixed the text of selected chips blending into their background with the custom theme
+* Fixed the Home wallpaper transparency leaking into screens opened over it
+* Fixed contact names and original message references not loading on newer WhatsApp versions
