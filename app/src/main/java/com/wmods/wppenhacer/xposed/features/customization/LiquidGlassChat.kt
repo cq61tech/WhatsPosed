@@ -23,17 +23,20 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.Choreographer
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
-import android.view.animation.OvershootInterpolator
 import android.widget.AbsListView
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import androidx.annotation.RequiresApi
 import com.wmods.wppenhacer.xposed.core.Feature
@@ -54,7 +57,8 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         val drawables = mutableListOf<LiquidIslandDrawable>()
         var elasticAttached = false
         var listListenerAttached = false
-        var listFloated = false
+        var topFloated = false
+        var bottomFloated = false
     }
 
     private val holders = WeakHashMap<Activity, ChatGlassHolder>()
@@ -75,18 +79,15 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
             ) {
                 activity.runOnUiThread {
                     val decor = activity.window?.decorView ?: return@runOnUiThread
-                    decor.post {
+                    val applyPass = {
                         runCatching {
                             if (enableGlass) applyLiquidGlassChat(activity)
                             if (enableElastic) attachElasticMessages(activity)
                         }
                     }
-                    decor.postDelayed({
-                        runCatching {
-                            if (enableGlass) applyLiquidGlassChat(activity)
-                            if (enableElastic) attachElasticMessages(activity)
-                        }
-                    }, 380L)
+                    decor.post { applyPass() }
+                    decor.postDelayed({ applyPass() }, 260L)
+                    decor.postDelayed({ applyPass() }, 680L)
                 }
             }
         }
@@ -110,102 +111,108 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
     private fun holderOf(activity: Activity): ChatGlassHolder =
         holders.getOrPut(activity) { ChatGlassHolder() }
 
+    private fun ancestorsOf(v: View): List<View> {
+        val out = mutableListOf<View>()
+        var cur: View? = v
+        while (cur != null) {
+            out.add(cur)
+            cur = cur.parent as? View
+        }
+        return out
+    }
+
+    private fun findLca(a: View, b: View): ViewGroup? {
+        val setA = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
+        for (v in ancestorsOf(a)) setA.add(v)
+        for (v in ancestorsOf(b)) {
+            if (v in setA && v is ViewGroup) return v
+        }
+        return null
+    }
+
+    private fun directChildUnder(parent: ViewGroup, descendant: View): View? {
+        var cur: View? = descendant
+        while (cur != null && cur.parent !== parent) {
+            cur = cur.parent as? View
+        }
+        return cur
+    }
+
+    private fun clearChainTransparent(from: View, upToInclusive: View) {
+        var cur: View? = from
+        while (cur != null) {
+            cur.setBackgroundColor(Color.TRANSPARENT)
+            cur.elevation = 0f
+            if (cur is ViewGroup) {
+                cur.clipChildren = false
+                cur.clipToPadding = false
+            }
+            if (cur === upToInclusive) break
+            cur = cur.parent as? View
+        }
+    }
+
+    private fun pullBranchToTop(lca: ViewGroup, branch: View, topH: Int) {
+        lca.clipChildren = false
+        lca.clipToPadding = false
+        if (branch is ViewGroup) {
+            branch.clipChildren = false
+            branch.clipToPadding = false
+        }
+        val lp = branch.layoutParams ?: return
+        when (lp) {
+            is RelativeLayout.LayoutParams -> {
+                lp.removeRule(RelativeLayout.BELOW)
+                lp.addRule(RelativeLayout.ALIGN_PARENT_TOP)
+                lp.topMargin = 0
+                branch.layoutParams = lp
+            }
+            is LinearLayout.LayoutParams -> {
+                if (lp.topMargin >= 0) {
+                    lp.topMargin = -topH
+                    branch.layoutParams = lp
+                }
+            }
+            is FrameLayout.LayoutParams -> {
+                if (lp.topMargin > 0) {
+                    lp.topMargin = 0
+                    branch.layoutParams = lp
+                }
+            }
+            else -> {
+                // Handle ConstraintLayout.LayoutParams via reflection if present
+                val handledConstraint = runCatching {
+                    val cls = lp.javaClass
+                    if (cls.name.contains("ConstraintLayout")) {
+                        val fTopToBot = cls.getField("topToBottom")
+                        val fTopToTop = cls.getField("topToTop")
+                        fTopToBot.setInt(lp, -1)
+                        fTopToTop.setInt(lp, 0)
+                        if (lp is ViewGroup.MarginLayoutParams) lp.topMargin = 0
+                        branch.layoutParams = lp
+                        true
+                    } else false
+                }.getOrDefault(false)
+                if (!handledConstraint && lp is ViewGroup.MarginLayoutParams && lp.topMargin >= 0) {
+                    lp.topMargin = -topH
+                    branch.layoutParams = lp
+                }
+            }
+        }
+    }
+
     private fun applyLiquidGlassChat(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
         val dark = isDark(activity)
         val holder = holderOf(activity)
 
-        val backdropRoot = findBackdropRoot(activity, content) ?: content
-        val excluded = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
-
-        // --- TOP BAR: fully transparent shell + compact floating glass islands ---
         val toolbar = findByName(activity, "toolbar") as? ViewGroup
         val header = findByName(activity, "header") as? ViewGroup
         val toolbarContainer = findByName(activity, "toolbar_container") as? ViewGroup
-        val topAnchor = header ?: toolbarContainer ?: toolbar
+        val topAnchor: View? = header ?: toolbarContainer ?: toolbar
 
-        toolbar?.let { tb ->
-            excluded.add(tb)
-            tb.setBackgroundColor(Color.TRANSPARENT)
-            tb.elevation = 0f
-            tb.clipChildren = false
-            tb.clipToPadding = false
-            clearAncestorsBackground(tb, 4, backdropRoot)
-
-            val padV = dp(activity, 4f)
-            val padH = dp(activity, 6f)
-            tb.setPadding(padH, padV, padH, padV)
-
-            // 1) Back + avatar pill (compact so contact name has room)
-            val backView = findByName(activity, "back") ?: findDirectNavButton(tb)
-            if (backView != null && backView.visibility == View.VISIBLE) {
-                styleIsland(
-                    activity = activity,
-                    view = backView,
-                    backdropRoot = backdropRoot,
-                    excludeSet = excluded,
-                    holder = holder,
-                    isCircle = backView.width in 1..(dp(activity, 56f)),
-                    dark = dark,
-                    radiusDp = 22f,
-                    padHDp = 4f,
-                    padVDp = 3f
-                )
-            }
-
-            // 2) Contact name pill (wider, minimal outer margin)
-            val contactPill = findByName(activity, "conversation_contact")
-                ?: findByName(activity, "conversation_contact_name")?.parent as? View
-            if (contactPill != null && contactPill !== tb) {
-                styleIsland(
-                    activity = activity,
-                    view = contactPill,
-                    backdropRoot = backdropRoot,
-                    excludeSet = excluded,
-                    holder = holder,
-                    isCircle = false,
-                    dark = dark,
-                    radiusDp = 22f,
-                    padHDp = 8f,
-                    padVDp = 4f
-                )
-                setHorizontalMargins(contactPill, dp(activity, 4f), dp(activity, 4f))
-            }
-
-            // 3) Right action menu pill
-            val actionMenu = findActionMenuView(tb)
-            if (actionMenu != null && actionMenu.childCount > 0) {
-                styleIsland(
-                    activity = activity,
-                    view = actionMenu,
-                    backdropRoot = backdropRoot,
-                    excludeSet = excluded,
-                    holder = holder,
-                    isCircle = false,
-                    dark = dark,
-                    radiusDp = 22f,
-                    padHDp = 2f,
-                    padVDp = 2f
-                )
-            }
-        }
-        header?.let {
-            excluded.add(it)
-            it.setBackgroundColor(Color.TRANSPARENT)
-            it.elevation = 0f
-            it.clipChildren = false
-            it.clipToPadding = false
-        }
-        toolbarContainer?.let {
-            excluded.add(it)
-            it.setBackgroundColor(Color.TRANSPARENT)
-            it.elevation = 0f
-            it.clipChildren = false
-            it.clipToPadding = false
-        }
-
-        // --- BOTTOM COMPOSER: transparent shell + separated glass capsule + circular mic/send ---
+        val list = activity.findViewById<View>(android.R.id.list)
         val entry = findByName(activity, "entry") as? EditText
         val inputCard = findByName(activity, "input_layout_content")
             ?: findByName(activity, "input_layout")
@@ -213,22 +220,195 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         val footer = findByName(activity, "footer") as? ViewGroup
             ?: inputCard?.parent as? ViewGroup
 
+        val topLca = if (topAnchor != null && list != null) findLca(topAnchor, list) else null
+        val topBranch = if (topLca != null && topAnchor != null) directChildUnder(topLca, topAnchor) else topAnchor
+        val listBranch = if (topLca != null && list != null) directChildUnder(topLca, list) else list
+
+        // --- FLOAT ENTIRE WALLPAPER + LIST CONTAINER BEHIND TOP BAR & RAISE TOP BAR Z ---
+        if (topLca != null && topBranch != null && listBranch != null && topBranch !== listBranch) {
+            clearChainTransparent(toolbar ?: topAnchor!!, topBranch)
+            topBranch.translationZ = dpf(activity, 28f)
+            topBranch.bringToFront()
+
+            val topH = topBranch.height.takeIf { it > 0 }
+                ?: topAnchor?.height?.takeIf { it > 0 }
+                ?: dp(activity, 62f)
+
+            if (!holder.topFloated) {
+                holder.topFloated = true
+                pullBranchToTop(topLca, listBranch, topH)
+                // Also pull any sibling wallpaper view in topLca up to the top
+                for (i in 0 until topLca.childCount) {
+                    val c = topLca.getChildAt(i)
+                    if (c === topBranch || c === listBranch) continue
+                    val entryName = runCatching {
+                        if (c.id != View.NO_ID && c.id > 0) c.resources.getResourceEntryName(c.id) else ""
+                    }.getOrDefault("")
+                    if (entryName.contains("wallpaper", ignoreCase = true) ||
+                        entryName.contains("background", ignoreCase = true) ||
+                        c is ImageView
+                    ) {
+                        pullBranchToTop(topLca, c, topH)
+                    }
+                }
+                if (list is ViewGroup) list.clipToPadding = false
+                if (list != null) {
+                    list.setPadding(
+                        list.paddingLeft,
+                        maxOf(list.paddingTop, topH + dp(activity, 8f)),
+                        list.paddingRight,
+                        list.paddingBottom
+                    )
+                }
+            }
+        } else if (topAnchor != null) {
+            topAnchor.setBackgroundColor(Color.TRANSPARENT)
+            topAnchor.translationZ = dpf(activity, 28f)
+            topAnchor.bringToFront()
+        }
+
+        val topBackdrop = topLca ?: findBackdropRoot(activity, content) ?: content
+        val topExcluded = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
+        topBranch?.let { topExcluded.add(it) }
+        topAnchor?.let { topExcluded.add(it) }
+        toolbar?.let { topExcluded.add(it) }
+
+        // --- TOP BAR: compact separated glass islands so contact name has plenty of room ---
+        toolbar?.let { tb ->
+            tb.setBackgroundColor(Color.TRANSPARENT)
+            tb.elevation = 0f
+            tb.clipChildren = false
+            tb.clipToPadding = false
+            runCatching {
+                tb.javaClass.getMethod(
+                    "setContentInsetsAbsolute",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType
+                ).invoke(tb, 0, 0)
+            }
+            runCatching {
+                tb.javaClass.getMethod("setContentInsetStartWithNavigation", Int::class.javaPrimitiveType)
+                    .invoke(tb, 0)
+            }
+            tb.setPadding(dp(activity, 6f), dp(activity, 4f), dp(activity, 6f), dp(activity, 4f))
+
+            // 1) Compact Back + Avatar pill
+            val backView = findByName(activity, "back") ?: findDirectNavButton(tb)
+            if (backView != null && backView.visibility == View.VISIBLE) {
+                if (backView is ViewGroup) {
+                    for (i in 0 until backView.childCount) {
+                        val ch = backView.getChildAt(i)
+                        val lp = ch.layoutParams as? ViewGroup.MarginLayoutParams
+                        if (lp != null) {
+                            lp.marginStart = min(lp.marginStart, dp(activity, 2f))
+                            lp.marginEnd = min(lp.marginEnd, dp(activity, 2f))
+                            ch.layoutParams = lp
+                        }
+                    }
+                }
+                styleIsland(
+                    activity = activity,
+                    view = backView,
+                    backdropRoot = topBackdrop,
+                    excludeSet = topExcluded,
+                    holder = holder,
+                    isCircle = backView.width in 1..(dp(activity, 52f)),
+                    dark = dark,
+                    radiusDp = 22f,
+                    padHDp = 4f,
+                    padVDp = 3f
+                )
+            }
+
+            // 2) Roomy Contact Name pill
+            val contactPill = findByName(activity, "conversation_contact")
+                ?: findByName(activity, "conversation_contact_name")?.parent as? View
+            if (contactPill != null && contactPill !== tb) {
+                styleIsland(
+                    activity = activity,
+                    view = contactPill,
+                    backdropRoot = topBackdrop,
+                    excludeSet = topExcluded,
+                    holder = holder,
+                    isCircle = false,
+                    dark = dark,
+                    radiusDp = 22f,
+                    padHDp = 10f,
+                    padVDp = 4f
+                )
+                setHorizontalMargins(contactPill, dp(activity, 5f), dp(activity, 5f))
+                if (contactPill.minimumWidth < dp(activity, 110f)) {
+                    contactPill.minimumWidth = dp(activity, 110f)
+                }
+            }
+
+            // 3) Compact Right Action Menu pill (tighten child paddings so name isn't squeezed)
+            val actionMenu = findActionMenuView(tb)
+            if (actionMenu != null && actionMenu.childCount > 0) {
+                val tightPad = dp(activity, 4f)
+                val tightMinW = dp(activity, 34f)
+                for (i in 0 until actionMenu.childCount) {
+                    val item = actionMenu.getChildAt(i)
+                    item.minimumWidth = min(item.minimumWidth, tightMinW)
+                    item.setPadding(
+                        min(item.paddingLeft, tightPad),
+                        item.paddingTop,
+                        min(item.paddingRight, tightPad),
+                        item.paddingBottom
+                    )
+                }
+                styleIsland(
+                    activity = activity,
+                    view = actionMenu,
+                    backdropRoot = topBackdrop,
+                    excludeSet = topExcluded,
+                    holder = holder,
+                    isCircle = false,
+                    dark = dark,
+                    radiusDp = 22f,
+                    padHDp = 3f,
+                    padVDp = 2f
+                )
+            }
+        }
+
+        // --- BOTTOM COMPOSER (separate backdropRoot = footer's parent so it captures wallpaper + list) ---
+        val bottomBackdrop = (footer?.parent as? ViewGroup) ?: findBackdropRoot(activity, content) ?: content
+        val bottomExcluded = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
+
         footer?.let { ft ->
-            excluded.add(ft)
+            bottomExcluded.add(ft)
             ft.setBackgroundColor(Color.TRANSPARENT)
             ft.elevation = 0f
+            ft.translationZ = dpf(activity, 18f)
             ft.clipChildren = false
             ft.clipToPadding = false
-            clearAncestorsBackground(ft, 3, backdropRoot)
+            if (!holder.bottomFloated && list != null) {
+                holder.bottomFloated = true
+                val botH = ft.height.takeIf { it > 0 } ?: dp(activity, 62f)
+                val lp = list.layoutParams
+                if (lp is RelativeLayout.LayoutParams) {
+                    lp.removeRule(RelativeLayout.ABOVE)
+                    lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+                    list.layoutParams = lp
+                }
+                if (list is ViewGroup) list.clipToPadding = false
+                list.setPadding(
+                    list.paddingLeft,
+                    list.paddingTop,
+                    list.paddingRight,
+                    maxOf(list.paddingBottom, botH + dp(activity, 10f))
+                )
+            }
         }
 
         if (inputCard != null) {
-            excluded.add(inputCard)
+            bottomExcluded.add(inputCard)
             styleIsland(
                 activity = activity,
                 view = inputCard,
-                backdropRoot = backdropRoot,
-                excludeSet = excluded,
+                backdropRoot = bottomBackdrop,
+                excludeSet = bottomExcluded,
                 holder = holder,
                 isCircle = false,
                 dark = dark,
@@ -242,12 +422,12 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         for (btnName in actionBtnIds) {
             val btn = findByName(activity, btnName) ?: continue
             if (btn === inputCard) continue
-            excluded.add(btn)
+            bottomExcluded.add(btn)
             styleIsland(
                 activity = activity,
                 view = btn,
-                backdropRoot = backdropRoot,
-                excludeSet = excluded,
+                backdropRoot = bottomBackdrop,
+                excludeSet = bottomExcluded,
                 holder = holder,
                 isCircle = true,
                 dark = dark,
@@ -258,62 +438,13 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
             )
         }
 
-        // --- FLOAT LIST BEHIND HEADER & FOOTER so messages truly scroll under the glass ---
-        val list = activity.findViewById<View>(android.R.id.list)
-        if (list != null) {
-            if (!holder.listFloated) {
-                holder.listFloated = true
-                floatListBehindBars(activity, list, topAnchor, footer)
-            }
-            if (!holder.listListenerAttached) {
-                holder.listListenerAttached = true
-                list.viewTreeObserver.addOnScrollChangedListener {
-                    for (d in holder.drawables) d.requestCapture()
-                }
+        if (list != null && !holder.listListenerAttached) {
+            holder.listListenerAttached = true
+            list.viewTreeObserver.addOnScrollChangedListener {
+                for (d in holder.drawables) d.requestCapture()
             }
         }
-        topAnchor?.bringToFront()
-        footer?.bringToFront()
         for (d in holder.drawables) d.requestCapture()
-    }
-
-    private fun floatListBehindBars(
-        activity: Activity,
-        list: View,
-        topBar: View?,
-        bottomBar: View?
-    ) {
-        if (list is ViewGroup) {
-            list.clipToPadding = false
-        }
-        val lp = list.layoutParams
-        val topH = (topBar?.height ?: 0).takeIf { it > 0 } ?: dp(activity, 64f)
-        val botH = (bottomBar?.height ?: 0).takeIf { it > 0 } ?: dp(activity, 62f)
-
-        if (lp is RelativeLayout.LayoutParams) {
-            lp.removeRule(RelativeLayout.BELOW)
-            lp.removeRule(RelativeLayout.ABOVE)
-            lp.addRule(RelativeLayout.ALIGN_PARENT_TOP)
-            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-            list.layoutParams = lp
-            list.setPadding(
-                list.paddingLeft,
-                maxOf(list.paddingTop, topH + dp(activity, 6f)),
-                list.paddingRight,
-                maxOf(list.paddingBottom, botH + dp(activity, 10f))
-            )
-        } else if (lp is ViewGroup.MarginLayoutParams) {
-            // Pull list under top/bottom bars via negative margins + matching padding
-            if (lp.topMargin >= 0) lp.topMargin = -topH
-            if (lp.bottomMargin >= 0) lp.bottomMargin = -botH
-            list.layoutParams = lp
-            list.setPadding(
-                list.paddingLeft,
-                maxOf(list.paddingTop, topH + dp(activity, 6f)),
-                list.paddingRight,
-                maxOf(list.paddingBottom, botH + dp(activity, 10f))
-            )
-        }
     }
 
     private fun findBackdropRoot(activity: Activity, content: ViewGroup): ViewGroup? {
@@ -329,19 +460,6 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
             p = p.parent as? ViewGroup
         }
         return content.getChildAt(0) as? ViewGroup ?: content
-    }
-
-    private fun clearAncestorsBackground(view: View, levels: Int, stopAt: ViewGroup) {
-        var cur = view.parent as? ViewGroup
-        var step = 0
-        while (cur != null && cur !== stopAt && step < levels) {
-            cur.setBackgroundColor(Color.TRANSPARENT)
-            cur.elevation = 0f
-            cur.clipChildren = false
-            cur.clipToPadding = false
-            cur = cur.parent as? ViewGroup
-            step++
-        }
     }
 
     private fun findDirectNavButton(toolbar: ViewGroup): View? {
@@ -405,12 +523,11 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
             return
         }
 
-        // Lighter, more transparent glass tint so scrolling messages & wallpaper refract clearly
         val tintColor = when {
-            preserveAccentTint && dark -> Color.argb(92, 16, 118, 86)
-            preserveAccentTint && !dark -> Color.argb(104, 20, 158, 114)
-            dark -> Color.argb(56, 16, 24, 34)
-            else -> Color.argb(86, 250, 253, 255)
+            preserveAccentTint && dark -> Color.argb(88, 16, 118, 86)
+            preserveAccentTint && !dark -> Color.argb(100, 20, 158, 114)
+            dark -> Color.argb(46, 16, 24, 34)
+            else -> Color.argb(78, 250, 253, 255)
         }
 
         val drawable = LiquidIslandDrawable(
@@ -428,11 +545,133 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         holder.drawables.add(drawable)
     }
 
-    // --- ELASTIC MESSAGE PRESS (Whole bubble stretches smoothly on hold+drag) ---
+    // --- LIQUID GEL PULL-AND-RELEASE SPRING ENGINE FOR MESSAGES ---
+    private class GelSpringState(private val view: View) : Choreographer.FrameCallback {
+        var tx = 0f; var vtx = 0f; var targetTx = 0f
+        var ty = 0f; var vty = 0f; var targetTy = 0f
+        var sx = 1f; var vsx = 0f; var targetSx = 1f
+        var sy = 1f; var vsy = 0f; var targetSy = 1f
+        var rot = 0f; var vrot = 0f; var targetRot = 0f
+        var rx = 0f; var vrx = 0f; var targetRx = 0f
+        var ry = 0f; var vry = 0f; var targetRy = 0f
+        var tz = 0f; var vtz = 0f; var targetTz = 0f
+
+        var dragging = false
+        private var running = false
+        private var lastNanos = 0L
+
+        fun ensureRunning() {
+            if (!running) {
+                running = true
+                lastNanos = System.nanoTime()
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+
+        fun resetImmediate() {
+            running = false
+            Choreographer.getInstance().removeFrameCallback(this)
+            tx = 0f; vtx = 0f; targetTx = 0f
+            ty = 0f; vty = 0f; targetTy = 0f
+            sx = 1f; vsx = 0f; targetSx = 1f
+            sy = 1f; vsy = 0f; targetSy = 1f
+            rot = 0f; vrot = 0f; targetRot = 0f
+            rx = 0f; vrx = 0f; targetRx = 0f
+            ry = 0f; vry = 0f; targetRy = 0f
+            tz = 0f; vtz = 0f; targetTz = 0f
+            applyToView()
+        }
+
+        fun releaseBouncy(pullRatio: Float, dirX: Float) {
+            dragging = false
+            targetTx = 0f; targetTy = 0f
+            targetSx = 1f; targetSy = 1f
+            targetRot = 0f; targetRx = 0f; targetRy = 0f
+            targetTz = 0f
+            // Coupled liquid squash-and-stretch impulse on release
+            val kick = (0.55f + 0.85f * pullRatio).coerceAtMost(1.35f)
+            if (abs(tx) >= abs(ty)) {
+                vsx -= 1.35f * kick
+                vsy += 1.25f * kick
+            } else {
+                vsx += 1.20f * kick
+                vsy -= 1.30f * kick
+            }
+            vrot -= sign(dirX) * 6.5f * pullRatio
+            ensureRunning()
+        }
+
+        private fun stepAxis(pos: Float, vel: Float, target: Float, k: Float, c: Float, dt: Float): Pair<Float, Float> {
+            val acc = -k * (pos - target) - c * vel
+            val nv = vel + acc * dt
+            val np = pos + nv * dt
+            return np to nv
+        }
+
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!running || !view.isAttachedToWindow) {
+                running = false
+                return
+            }
+            val rawDt = (frameTimeNanos - lastNanos) / 1_000_000_000f
+            lastNanos = frameTimeNanos
+            val dt = rawDt.coerceIn(0.001f, 0.032f)
+            val subDt = dt * 0.5f
+
+            // While dragging: smooth viscous gel follow; on release: juicy underdamped bouncy jelly
+            val kPos = if (dragging) 460f else 340f
+            val cPos = if (dragging) 36f else 12.5f
+            val kScale = if (dragging) 420f else 380f
+            val cScale = if (dragging) 32f else 11.5f
+            val kTilt = if (dragging) 360f else 300f
+            val cTilt = if (dragging) 28f else 13f
+
+            repeat(2) {
+                stepAxis(tx, vtx, targetTx, kPos, cPos, subDt).let { tx = it.first; vtx = it.second }
+                stepAxis(ty, vty, targetTy, kPos, cPos, subDt).let { ty = it.first; vty = it.second }
+                stepAxis(sx, vsx, targetSx, kScale, cScale, subDt).let { sx = it.first; vsx = it.second }
+                stepAxis(sy, vsy, targetSy, kScale, cScale, subDt).let { sy = it.first; vsy = it.second }
+                stepAxis(rot, vrot, targetRot, kTilt, cTilt, subDt).let { rot = it.first; vrot = it.second }
+                stepAxis(rx, vrx, targetRx, kTilt, cTilt, subDt).let { rx = it.first; vrx = it.second }
+                stepAxis(ry, vry, targetRy, kTilt, cTilt, subDt).let { ry = it.first; vry = it.second }
+                stepAxis(tz, vtz, targetTz, 380f, 24f, subDt).let { tz = it.first; vtz = it.second }
+            }
+
+            applyToView()
+
+            val settled = !dragging &&
+                abs(tx) < 0.08f && abs(vtx) < 0.5f &&
+                abs(ty) < 0.08f && abs(vty) < 0.5f &&
+                abs(sx - 1f) < 0.0015f && abs(vsx) < 0.01f &&
+                abs(sy - 1f) < 0.0015f && abs(vsy) < 0.01f &&
+                abs(rot) < 0.04f && abs(vrot) < 0.2f &&
+                abs(rx) < 0.04f && abs(ry) < 0.04f &&
+                abs(tz) < 0.08f
+
+            if (settled) {
+                resetImmediate()
+            } else {
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+
+        private fun applyToView() {
+            view.translationX = tx
+            view.translationY = ty
+            view.scaleX = sx.coerceIn(0.86f, 1.16f)
+            view.scaleY = sy.coerceIn(0.86f, 1.16f)
+            view.rotation = rot.coerceIn(-4.5f, 4.5f)
+            view.rotationX = rx.coerceIn(-7f, 7f)
+            view.rotationY = ry.coerceIn(-7f, 7f)
+            view.translationZ = tz.coerceAtLeast(0f)
+        }
+    }
+
     private fun attachElasticMessages(activity: Activity) {
         if (activity.isFinishing || activity.isDestroyed) return
         val holder = holderOf(activity)
         val list = activity.findViewById<ViewGroup>(android.R.id.list) ?: return
+        list.clipChildren = false
 
         bindVisibleMessageRows(activity, list)
         if (holder.elasticAttached) return
@@ -460,94 +699,149 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
 
     private fun bindElasticToRow(activity: Activity, row: View) {
         if (!elasticViews.add(row)) return
-        val maxStretch = dpf(activity, 22f)
-        val swipeReplyThreshold = dpf(activity, 52f)
-        val verticalScrollThreshold = dpf(activity, 46f)
+        val density = activity.resources.displayMetrics.density
+        row.cameraDistance = 6500f * density
+        val maxX = dpf(activity, 30f)
+        val maxY = dpf(activity, 20f)
+        val liftZ = dpf(activity, 7f)
+        val quickSwipeThreshold = dpf(activity, 26f)
         val touchSlop = ViewConfiguration.get(activity).scaledTouchSlop.toFloat()
+
+        val spring = GelSpringState(row)
+        row.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                spring.resetImmediate()
+            }
+        })
 
         var downX = 0f
         var downY = 0f
+        var downMs = 0L
         var active = false
+        var gelReady = false
         var gelLocked = false
-        var holdRunnable: Runnable? = null
+        var lastDx = 0f
+        var lastPull = 0f
+        var readyRunnable: Runnable? = null
 
-        fun springBack(target: View) {
-            holdRunnable?.let { mainHandler.removeCallbacks(it) }
-            holdRunnable = null
-            target.animate()
-                .translationX(0f)
-                .translationY(0f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .rotation(0f)
-                .setDuration(300L)
-                .setInterpolator(OvershootInterpolator(1.55f))
-                .start()
+        fun cancelTimer() {
+            readyRunnable?.let { mainHandler.removeCallbacks(it) }
+            readyRunnable = null
         }
 
-        // Animate the entire row so bubble background + text + timestamp + tail all stretch together
         row.setOnTouchListener { target, ev ->
             when (ev.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = ev.rawX
                     downY = ev.rawY
+                    downMs = SystemClock.uptimeMillis()
                     active = true
+                    gelReady = false
                     gelLocked = false
-                    target.animate().cancel()
+                    lastDx = 0f
+                    lastPull = 0f
+
                     target.pivotX = ev.x.coerceIn(0f, target.width.toFloat().coerceAtLeast(1f))
                     target.pivotY = ev.y.coerceIn(0f, target.height.toFloat().coerceAtLeast(1f))
 
+                    // Soft initial gel press-in
+                    spring.dragging = true
+                    spring.targetSx = 0.978f
+                    spring.targetSy = 0.978f
+                    spring.targetTz = liftZ * 0.25f
+                    spring.ensureRunning()
+
+                    cancelTimer()
                     val r = Runnable {
-                        if (active) {
-                            gelLocked = true
-                            target.animate()
-                                .scaleX(1.032f)
-                                .scaleY(0.972f)
-                                .setDuration(120L)
-                                .start()
+                        if (active && !gelLocked) {
+                            gelReady = true
+                            spring.targetSx = 1.028f
+                            spring.targetSy = 0.974f
+                            spring.targetTz = liftZ * 0.5f
+                            spring.ensureRunning()
                         }
                     }
-                    holdRunnable = r
-                    mainHandler.postDelayed(r, 150L)
+                    readyRunnable = r
+                    mainHandler.postDelayed(r, 115L)
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!active) return@setOnTouchListener false
                     val dx = ev.rawX - downX
                     val dy = ev.rawY - downY
-
-                    // Only release to WhatsApp swipe-to-reply on fast deliberate rightward swipe before gel-lock
-                    if (!gelLocked && dx > swipeReplyThreshold && dx > abs(dy) * 2.1f) {
-                        active = false
-                        springBack(target)
-                        return@setOnTouchListener false
-                    }
-                    if (!gelLocked && abs(dy) > verticalScrollThreshold && abs(dy) > abs(dx) * 1.8f) {
-                        active = false
-                        springBack(target)
-                        return@setOnTouchListener false
-                    }
-
                     val dist = hypot(dx, dy)
-                    if (gelLocked || dist > touchSlop * 0.35f) {
-                        val tx = (tanh((dx / (maxStretch * 1.9f)).toDouble()) * maxStretch).toFloat()
-                        val ty = (tanh((dy / (maxStretch * 2.1f)).toDouble()) * (maxStretch * 0.72f)).toFloat()
-                        val pull = (dist / (maxStretch * 2.8f)).coerceIn(0f, 1f)
-                        val sx = if (abs(dx) >= abs(dy)) 1f + 0.048f * pull else 1f - 0.024f * pull
-                        val sy = if (abs(dy) > abs(dx)) 1f + 0.042f * pull else 1f - 0.022f * pull
-                        target.translationX = tx
-                        target.translationY = ty
-                        target.scaleX = sx
-                        target.scaleY = sy
-                        target.rotation = sign(dx) * min(abs(dx) / 95f, 1f) * 1.15f
+                    val elapsed = SystemClock.uptimeMillis() - downMs
+
+                    if (!gelLocked) {
+                        // Fast immediate rightward swipe (<115ms) -> let WhatsApp native swipe-to-reply handle it
+                        if (!gelReady && elapsed < 120L && dx > quickSwipeThreshold && dx > abs(dy) * 1.7f) {
+                            active = false
+                            cancelTimer()
+                            spring.releaseBouncy(0.2f, dx)
+                            return@setOnTouchListener false
+                        }
+                        // Fast vertical scroll before hold -> let ListView scroll smoothly
+                        if (!gelReady && abs(dy) > quickSwipeThreshold && abs(dy) > abs(dx) * 1.6f) {
+                            active = false
+                            cancelTimer()
+                            spring.releaseBouncy(0.15f, 0f)
+                            return@setOnTouchListener false
+                        }
+                        // Lock into smooth Gel Pull-and-Release once held (~115ms) + dragged OR pulled left
+                        val engagePull = (gelReady && dist > touchSlop * 0.45f) ||
+                            (dx < -touchSlop * 0.9f && abs(dx) > abs(dy))
+                        if (engagePull) {
+                            gelLocked = true
+                            cancelTimer()
+                            target.cancelLongPress()
+                            target.parent?.requestDisallowInterceptTouchEvent(true)
+                            runCatching { target.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK) }
+                        }
                     }
+
+                    if (gelLocked) {
+                        val tx = (tanh((dx / (maxX * 1.7f)).toDouble()) * maxX).toFloat()
+                        val ty = (tanh((dy / (maxY * 1.9f)).toDouble()) * maxY).toFloat()
+                        val pull = (hypot(tx / maxX, ty / maxY)).coerceIn(0f, 1.15f)
+                        val domX = (abs(tx) - abs(ty)) / (abs(tx) + abs(ty) + 1f)
+                        val stretchX = 1f + 0.095f * pull * (0.35f + 0.65f * domX)
+                        val stretchY = (1f / stretchX).coerceIn(0.90f, 1.10f)
+
+                        spring.dragging = true
+                        spring.targetTx = tx
+                        spring.targetTy = ty
+                        spring.targetSx = stretchX
+                        spring.targetSy = stretchY
+                        spring.targetRot = (tx / maxX) * 1.9f
+                        spring.targetRy = (tx / maxX) * 5.2f
+                        spring.targetRx = -(ty / maxY) * 4.4f
+                        spring.targetTz = liftZ * (0.45f + 0.55f * min(pull, 1f))
+                        spring.ensureRunning()
+
+                        lastDx = dx
+                        lastPull = min(pull, 1f)
+                        return@setOnTouchListener true
+                    }
+                    false
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val wasLocked = gelLocked
                     active = false
+                    gelReady = false
                     gelLocked = false
-                    springBack(target)
+                    cancelTimer()
+                    if (wasLocked) {
+                        target.parent?.requestDisallowInterceptTouchEvent(false)
+                        spring.releaseBouncy(lastPull.coerceAtLeast(0.35f), lastDx)
+                        return@setOnTouchListener true
+                    } else {
+                        spring.releaseBouncy(0.22f, lastDx)
+                        false
+                    }
                 }
+                else -> false
             }
-            false
         }
     }
 
@@ -603,9 +897,9 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
                 float spec2 = pow(max(dot(-n, light2), 0.0), 2.8) * rimBand * 0.48;
                 float crisp = 1.0 - smoothstep(0.0, 2.2, edgeDist);
                 float normY = clamp((p.y + halfSize.y) / max(halfSize.y * 2.0, 1.0), 0.0, 1.0);
-                float sheen = pow(1.0 - normY, 2.2) * (isDark > 0.5 ? 0.13 : 0.20);
+                float sheen = pow(1.0 - normY, 2.2) * (isDark > 0.5 ? 0.12 : 0.19);
 
-                half h = half(spec1 * 0.48 + spec2 * 0.28 + crisp * (isDark > 0.5 ? 0.28 : 0.38) + sheen);
+                half h = half(spec1 * 0.46 + spec2 * 0.26 + crisp * (isDark > 0.5 ? 0.26 : 0.36) + sheen);
                 rgb = clamp(rgb + half3(h, h, h), half3(0.0, 0.0, 0.0), half3(1.0, 1.0, 1.0));
                 return half4(rgb * half(alpha), half(alpha));
             }
@@ -690,7 +984,7 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
 
         fun requestCapture() {
             val now = SystemClock.uptimeMillis()
-            if (now - lastCaptureMs >= 55L) {
+            if (now - lastCaptureMs >= 50L) {
                 lastCaptureMs = now
                 capture()
             } else if (!pending) {
@@ -699,7 +993,7 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
                     pending = false
                     lastCaptureMs = SystemClock.uptimeMillis()
                     capture()
-                }, 55L)
+                }, 50L)
             }
         }
 
