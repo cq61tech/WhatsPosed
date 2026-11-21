@@ -2096,7 +2096,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     teaser + " " + "\u3164".repeat(1050) + "\n" + hidden
                 }
             } else {
-                List(blankLines) { "\u3164" }.joinToString("\n")
+                if (blankLines <= 1) "\uFFA0\uFFA0\uFFA0" else List(blankLines) { "\uFFA0\uFFA0" }.joinToString("\n")
             }
         }
 

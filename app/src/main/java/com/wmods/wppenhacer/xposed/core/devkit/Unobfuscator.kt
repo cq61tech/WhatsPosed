@@ -2196,6 +2196,175 @@ object Unobfuscator {
         }
     }.getOrNull()
 
+    private const val HERO_PLAYER_CLASS = "com.facebook.video.heroplayer.client.HeroPlayer"
+    private const val HERO_VIEW_CLASS = "com.whatsapp.videoplayback.FbHeroPlayerView"
+
+    fun loadHeroVideoSetSpeedV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val direct = heroCls?.methods?.firstOrNull {
+                it.name == "setPlaybackSpeed" &&
+                    it.parameterTypes.size == 1 &&
+                    it.parameterTypes[0] == Float::class.javaPrimitiveType
+            }
+            if (direct != null) return@getMethod direct
+
+            val byString = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    addUsingString("setPlaybackSpeed", StringMatchType.Contains)
+                }
+            }.firstOrNull { it.declaredClassName == HERO_PLAYER_CLASS }
+            if (byString != null) return@getMethod byString.getMethodInstance(classLoader)
+
+            val byCaller = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    callerMethods {
+                        add {
+                            addUsingString("FbHeroAudioPlayer/setPlaybackSpeed", StringMatchType.Contains)
+                        }
+                    }
+                }
+            }.firstOrNull { it.declaredClassName == HERO_PLAYER_CLASS }
+            if (byCaller != null) return@getMethod byCaller.getMethodInstance(classLoader)
+
+            val bySpeedWord = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    addUsingString("PlaybackSpeed", StringMatchType.Contains)
+                }
+            }.firstOrNull { it.declaredClassName == HERO_PLAYER_CLASS }
+            bySpeedWord?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("HeroVideoSetSpeedV2 not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoPlayV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val direct = heroCls?.methods?.firstOrNull {
+                it.name == "play" && it.parameterTypes.isEmpty() && it.returnType == Void.TYPE
+            }
+            if (direct != null) return@getMethod direct
+
+            val exact = bridge.findMethod {
+                matcher {
+                    usingStrings("play")
+                }
+            }.mapNotNull {
+                if (it.declaredClassName != HERO_PLAYER_CLASS) null
+                else runCatching { it.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { it.parameterTypes.isEmpty() && it.returnType == Void.TYPE }
+            if (exact != null) return@getMethod exact
+
+            val fuzzy = bridge.findMethod {
+                matcher {
+                    addUsingString("play", StringMatchType.Contains)
+                }
+            }.mapNotNull {
+                if (it.declaredClassName != HERO_PLAYER_CLASS) null
+                else runCatching { it.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { it.parameterTypes.isEmpty() && it.returnType == Void.TYPE }
+            fuzzy ?: throw NoSuchMethodException("HeroVideoPlayV2 not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoPauseV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val direct = heroCls?.methods?.firstOrNull {
+                it.name == "pause" && it.parameterTypes.isEmpty() && it.returnType == Void.TYPE
+            }
+            if (direct != null) return@getMethod direct
+
+            val exact = bridge.findMethod {
+                matcher {
+                    usingStrings("pause")
+                }
+            }.mapNotNull {
+                if (it.declaredClassName != HERO_PLAYER_CLASS) null
+                else runCatching { it.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { it.parameterTypes.isEmpty() && it.returnType == Void.TYPE }
+            if (exact != null) return@getMethod exact
+
+            val fuzzy = bridge.findMethod {
+                matcher {
+                    addUsingString("pause", StringMatchType.Contains)
+                }
+            }.mapNotNull {
+                if (it.declaredClassName != HERO_PLAYER_CLASS) null
+                else runCatching { it.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { it.parameterTypes.isEmpty() && it.returnType == Void.TYPE }
+            fuzzy ?: throw NoSuchMethodException("HeroVideoPauseV2 not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoSeekV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val direct = heroCls?.methods?.firstOrNull {
+                it.name == "seekTo" && it.parameterTypes.size in 1..3 &&
+                    (it.parameterTypes[0] == Int::class.javaPrimitiveType ||
+                        it.parameterTypes[0] == Long::class.javaPrimitiveType)
+            }
+            if (direct != null) return@getMethod direct
+
+            val byString = bridge.findMethod {
+                matcher {
+                    addUsingString("seekTo", StringMatchType.Contains)
+                }
+            }.mapNotNull {
+                if (it.declaredClassName != HERO_PLAYER_CLASS) null
+                else runCatching { it.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull {
+                it.parameterTypes.size in 1..3 &&
+                    (it.parameterTypes[0] == Int::class.javaPrimitiveType ||
+                        it.parameterTypes[0] == Long::class.javaPrimitiveType)
+            }
+            byString ?: throw NoSuchMethodException("HeroVideoSeekV2 not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoSetSurfaceV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val direct = heroCls?.methods?.firstOrNull {
+                it.parameterTypes.size == 1 && it.parameterTypes[0] == android.view.Surface::class.java
+            }
+            if (direct != null) return@getMethod direct
+
+            val byString = bridge.findMethod {
+                matcher {
+                    paramTypes(android.view.Surface::class.java)
+                    addUsingString("setSurface", StringMatchType.Contains)
+                }
+            }.firstOrNull { it.declaredClassName == HERO_PLAYER_CLASS }
+            byString?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("HeroVideoSetSurfaceV2 not found")
+        }
+    }.getOrNull()
+
+    fun loadFbHeroViewSetPlayerV2(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroCls = runCatching { classLoader.loadClass(HERO_PLAYER_CLASS) }.getOrNull()
+            val viewCls = runCatching { classLoader.loadClass(HERO_VIEW_CLASS) }.getOrNull()
+            if (heroCls != null && viewCls != null) {
+                val direct = viewCls.methods.firstOrNull { m ->
+                    m.parameterTypes.any { it.isAssignableFrom(heroCls) }
+                }
+                if (direct != null) return@getMethod direct
+            }
+            val byString = bridge.findMethod {
+                matcher {
+                    addUsingString("FbHeroPlayerView/setPlayer", StringMatchType.Contains)
+                }
+            }.firstOrNull { it.declaredClassName == HERO_VIEW_CLASS }
+            byString?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("FbHeroViewSetPlayerV2 not found")
+        }
+    }.getOrNull()
+
     @Throws(Exception::class)
     @JvmStatic
     fun loadListUpdateItems(classLoader: ClassLoader): Method {
