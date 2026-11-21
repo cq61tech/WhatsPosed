@@ -6,6 +6,11 @@
         app:iconSpaceReserved="false"
         app:title="@string/general">
 
+        <Preference
+            app:key="material_expressive_editor"
+            app:summary="@string/wpme_entry_summary"
+            app:title="@string/wpme_title" />
+
         <rikka.material.preference.MaterialSwitchPreference
             app:key="changecolor"
             app:summary="@string/colors_customization_sum"

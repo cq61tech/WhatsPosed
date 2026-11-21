@@ -10,6 +10,7 @@ import com.wmods.wppenhacer.xposed.features.customization.DefaultEmoji
 import com.wmods.wppenhacer.xposed.features.customization.FilterGroups
 import com.wmods.wppenhacer.xposed.features.customization.FloatingBottomBar
 import com.wmods.wppenhacer.xposed.features.customization.ChatFloatingTools
+import com.wmods.wppenhacer.xposed.features.customization.MaterialExpressive
 import com.wmods.wppenhacer.xposed.features.customization.NativeFloatingNavigation
 import com.wmods.wppenhacer.xposed.features.customization.HideSeenView
 import com.wmods.wppenhacer.xposed.features.customization.HideTabs
@@ -90,6 +91,7 @@ internal object FeatureRegistry {
         CustomThemeV2::class.java,
         FloatingBottomBar::class.java,
         ChatFloatingTools::class.java,
+        MaterialExpressive::class.java,
         NativeFloatingNavigation::class.java,
         ChatLimit::class.java,
         SeparateGroup::class.java,

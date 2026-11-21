@@ -21,7 +21,10 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Handler
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import android.os.Looper
 import android.text.InputType
 import android.text.TextUtils
@@ -148,7 +151,84 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
 
-    private fun paletteFor(activity: Activity): Palette = if (isDark(activity)) {
+    private fun resolveAndroidColor(activity: Activity, name: String): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return 0
+        val id = activity.resources.getIdentifier(name, "color", "android")
+        if (id == 0) return 0
+        return runCatching { ContextCompat.getColor(activity, id) }.getOrDefault(0)
+    }
+
+    private fun resolveMonetPalette(activity: Activity): Palette? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        val meMonet = xprefs.getBoolean("me_enabled", false) &&
+            xprefs.getBoolean("me_sync_bubble", true) &&
+            xprefs.getString("me_color_source", "monet") == "monet"
+        val themeMonet = xprefs.getBoolean("changecolor", false) &&
+            xprefs.getString("changecolor_mode", "manual") == "monet"
+        if (!meMonet && !themeMonet) return null
+
+        val dark = isDark(activity)
+        val a200 = resolveAndroidColor(activity, "system_accent1_200")
+        val a300 = resolveAndroidColor(activity, "system_accent1_300")
+        val a600 = resolveAndroidColor(activity, "system_accent1_600")
+        val a700 = resolveAndroidColor(activity, "system_accent1_700")
+        val a800 = resolveAndroidColor(activity, "system_accent1_800")
+        val a100 = resolveAndroidColor(activity, "system_accent1_100")
+        val a50 = resolveAndroidColor(activity, "system_accent1_50")
+        val n900 = resolveAndroidColor(activity, "system_neutral1_900")
+        val n800 = resolveAndroidColor(activity, "system_neutral1_800")
+        val n700 = resolveAndroidColor(activity, "system_neutral1_700")
+        val n200 = resolveAndroidColor(activity, "system_neutral1_200")
+        val n100 = resolveAndroidColor(activity, "system_neutral1_100")
+        val n50 = resolveAndroidColor(activity, "system_neutral1_50")
+        val n10 = resolveAndroidColor(activity, "system_neutral1_10")
+
+        if (a600 == 0 || n900 == 0) return null
+
+        return if (dark) {
+            val surface = ColorUtils.blendARGB(n900, a800.takeIf { it != 0 } ?: n900, 0.16f)
+            val fieldBg = ColorUtils.blendARGB(n800.takeIf { it != 0 } ?: surface, a800.takeIf { it != 0 } ?: surface, 0.20f)
+            Palette(
+                accent = a300.takeIf { it != 0 } ?: a200,
+                accentRunning = 0xFFD9383A.toInt(),
+                accentTimer = 0xFFD98218.toInt(),
+                surface = surface,
+                surfaceStroke = ColorUtils.blendARGB(n700.takeIf { it != 0 } ?: fieldBg, a300.takeIf { it != 0 } ?: a200, 0.25f),
+                fieldBg = fieldBg,
+                fieldStroke = ColorUtils.blendARGB(n700.takeIf { it != 0 } ?: fieldBg, a200.takeIf { it != 0 } ?: a600, 0.30f),
+                tonalBg = a700.takeIf { it != 0 } ?: fieldBg,
+                tonalIcon = a100.takeIf { it != 0 } ?: Color.WHITE,
+                dangerBg = 0xFF3D2224.toInt(),
+                dangerIcon = 0xFFF28B82.toInt(),
+                closeBg = fieldBg,
+                textPrimary = n50.takeIf { it != 0 } ?: Color.WHITE,
+                textSecondary = n200.takeIf { it != 0 } ?: 0xFFB0BEC5.toInt(),
+                scrim = 0x55000000
+            )
+        } else {
+            val surface = ColorUtils.blendARGB(n10.takeIf { it != 0 } ?: Color.WHITE, a50.takeIf { it != 0 } ?: Color.WHITE, 0.22f)
+            val fieldBg = ColorUtils.blendARGB(n50.takeIf { it != 0 } ?: surface, a100.takeIf { it != 0 } ?: surface, 0.25f)
+            Palette(
+                accent = a600,
+                accentRunning = 0xFFD32F2F.toInt(),
+                accentTimer = 0xFFC9760E.toInt(),
+                surface = surface,
+                surfaceStroke = ColorUtils.blendARGB(n200.takeIf { it != 0 } ?: fieldBg, a600, 0.18f),
+                fieldBg = fieldBg,
+                fieldStroke = ColorUtils.blendARGB(n200.takeIf { it != 0 } ?: fieldBg, a600, 0.24f),
+                tonalBg = a100.takeIf { it != 0 } ?: fieldBg,
+                tonalIcon = a800.takeIf { it != 0 } ?: a600,
+                dangerBg = 0xFFFCE4E4.toInt(),
+                dangerIcon = 0xFFC62828.toInt(),
+                closeBg = fieldBg,
+                textPrimary = n900,
+                textSecondary = n700.takeIf { it != 0 } ?: 0xFF455A64.toInt(),
+                scrim = 0x38000000
+            )
+        }
+    }
+
+    private fun paletteFor(activity: Activity): Palette = resolveMonetPalette(activity) ?: if (isDark(activity)) {
         Palette(
             accent = 0xFF1DAA61.toInt(),
             accentRunning = 0xFFD9383A.toInt(),
