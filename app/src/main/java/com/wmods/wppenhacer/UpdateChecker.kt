@@ -14,8 +14,6 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-
 class UpdateChecker(private val mActivity: Activity) : Runnable {
 
     data class ReleaseInfo(
@@ -36,7 +34,8 @@ class UpdateChecker(private val mActivity: Activity) : Runnable {
 
         @Volatile
         private var cachedRelease: ReleaseInfo? = null
-        private val dialogShowing = AtomicBoolean(false)
+        @Volatile
+        private var lastDialogShownAtMs = 0L
 
         private val httpClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
@@ -170,10 +169,12 @@ class UpdateChecker(private val mActivity: Activity) : Runnable {
                         logInfo("Activity finishing/destroyed, skipping update dialog")
                         return@runOnUiThread
                     }
-                    if (!dialogShowing.compareAndSet(false, true)) {
-                        logInfo("Update dialog already showing, skipping duplicate")
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastDialogShownAtMs < 15_000L) {
+                        logInfo("Update dialog shown recently, skipping duplicate")
                         return@runOnUiThread
                     }
+                    lastDialogShownAtMs = nowMs
                     showUpdateDialog(release, localVersion)
                 }
             }
@@ -203,21 +204,15 @@ class UpdateChecker(private val mActivity: Activity) : Runnable {
             dialog.setNegativeButton("Ignore") { d, _ ->
                 logInfo("User ignored version ${release.version}")
                 WppCore.setPrivString("ignored_version", release.version)
-                dialogShowing.set(false)
                 d.dismiss()
             }
             dialog.setPositiveButton("Update Now") { d, _ ->
                 logInfo("User tapped Update Now -> ${release.releaseUrl}")
-                dialogShowing.set(false)
                 Utils.openLink(mActivity, release.releaseUrl)
                 d.dismiss()
             }
-            dialog.setOnDismissListener {
-                dialogShowing.set(false)
-            }
             dialog.show()
         } catch (e: Exception) {
-            dialogShowing.set(false)
             logError("Failed to display update dialog", e)
         }
     }

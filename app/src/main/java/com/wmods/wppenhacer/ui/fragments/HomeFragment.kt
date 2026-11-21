@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -28,7 +27,6 @@ import com.wmods.wppenhacer.App
 import com.wmods.wppenhacer.BuildConfig
 import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.UpdateChecker
-import android.util.Log
 import com.wmods.wppenhacer.adapter.LogLineAdapter
 import com.wmods.wppenhacer.databinding.DialogDiagnosticsLogBinding
 import com.wmods.wppenhacer.databinding.FragmentHomeBinding
@@ -525,7 +523,7 @@ class HomeFragment : BaseFragment() {
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    Log.i("WhatsPosedUpdate", "HomeFragment check HTTP ${response.code}")
+                    android.util.Log.i("WhatsPosedUpdate", "HomeFragment check HTTP ${response.code}")
                     if (!response.isSuccessful) {
                         updateCardState(success = false, isUpToDate = false, newVersion = null)
                         return@use
@@ -546,7 +544,7 @@ class HomeFragment : BaseFragment() {
                     }
 
                     val isNewVersion = UpdateChecker.isRemoteNewer(cleanTag, BuildConfig.VERSION_NAME)
-                    Log.i("WhatsPosedUpdate", "HomeFragment local='${BuildConfig.VERSION_NAME}' remote='$cleanTag' isNew=$isNewVersion")
+                    android.util.Log.i("WhatsPosedUpdate", "HomeFragment local='${BuildConfig.VERSION_NAME}' remote='$cleanTag' isNew=$isNewVersion")
 
                     updateCardState(
                         success = true,
