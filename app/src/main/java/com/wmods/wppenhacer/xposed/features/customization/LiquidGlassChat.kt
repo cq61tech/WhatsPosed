@@ -230,6 +230,7 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         if (topLca != null && topBranch != null && listBranch != null && topBranch !== listBranch) {
             topLca.clipChildren = false
             topLca.clipToPadding = false
+            topLca.setBackgroundColor(Color.TRANSPARENT)
             clearChainTransparent(toolbar ?: topAnchor!!, topBranch)
 
             topBranch.translationZ = dpf(activity, 32f)
@@ -299,7 +300,7 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         toolbar?.let { topExcluded.add(it) }
 
         // --- TOP BAR: sleeker 41dp floating pills with wide contact name room ---
-        val sleekTopH = dp(activity, 41f)
+        val sleekTopH = dp(activity, 44f)
         toolbar?.let { tb ->
             tb.setBackgroundColor(Color.TRANSPARENT)
             tb.elevation = 0f
@@ -412,6 +413,11 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
             val actionMenu = findActionMenuView(tb)
             if (actionMenu != null && actionMenu.childCount > 0) {
                 setSleekIslandHeight(actionMenu, sleekTopH)
+                (actionMenu.layoutParams as? ViewGroup.MarginLayoutParams)?.let { mlp ->
+                    mlp.topMargin = 0
+                    mlp.bottomMargin = 0
+                    actionMenu.layoutParams = mlp
+                }
                 val tightPad = dp(activity, 3f)
                 val tightW = dp(activity, 33f)
                 for (i in 0 until actionMenu.childCount) {
@@ -664,12 +670,28 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
         }
 
         view.elevation = dpf(activity, 5f)
-        view.clipToOutline = true
         view.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(v: View, outline: Outline) {
+                if (v.width <= 0 || v.height <= 0) return
                 val r = if (isCircle) min(v.width, v.height) / 2f else min(radiusPx, min(v.width, v.height) / 2f)
                 outline.setRoundRect(0, 0, v.width, v.height, r)
             }
+        }
+        view.clipToOutline = view.width > 0 && view.height > 0
+        if (view.width <= 0 || view.height <= 0) {
+            view.addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(
+                    v: View, l: Int, t: Int, r: Int, b: Int,
+                    ol: Int, ot: Int, or: Int, ob: Int
+                ) {
+                    if (v.width > 0 && v.height > 0) {
+                        v.removeOnLayoutChangeListener(this)
+                        v.clipToOutline = true
+                        v.invalidateOutline()
+                        (v.background as? LiquidIslandDrawable)?.requestCapture()
+                    }
+                }
+            })
         }
 
         val existing = view.background as? LiquidIslandDrawable

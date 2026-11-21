@@ -620,4 +620,12 @@
     <string name="elastic_hold_delay_sum">Esneme başlamadan önceki bekleme süresi (düşük = anında esner, yüksek = yanıtla daha rahat)</string>
     <string name="elastic_haptic">Dokunsal titreşim</string>
     <string name="elastic_haptic_sum">Mesajı tutup esnetirken ve bırakırken hafif titreşim verir</string>
+    <string name="elastic_enable_title">Akışkan esneyen mesajları aç</string>
+    <string name="elastic_reset">Sıfırla</string>
+    <string name="elastic_preset_soft">Yumuşak</string>
+    <string name="elastic_preset_jelly">Jöle</string>
+    <string name="elastic_preset_bouncy">Bouncy</string>
+    <string name="elastic_preview_hint">Canlı test için aşağıdaki balonları tutup çek ve bırak</string>
+    <string name="elastic_preview_msg1">Beni tutup çek!</string>
+    <string name="elastic_preview_msg2">Bırakınca nasıl zıplıyor bak</string>
 </resources>

@@ -6,6 +6,7 @@ import android.view.View
 import androidx.preference.Preference
 import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.activities.FloatingBarActivity
+import com.wmods.wppenhacer.activities.ElasticMessagesActivity
 import com.wmods.wppenhacer.activities.MaterialExpressiveActivity
 import com.wmods.wppenhacer.ui.fragments.base.BasePreferenceFragment
 
@@ -15,6 +16,10 @@ class CustomizationFragment : BasePreferenceFragment() {
         setPreferencesFromResource(R.xml.fragment_customization, rootKey)
         findPreference<Preference>("floating_bottom_bar_editor")?.setOnPreferenceClickListener {
             startActivity(Intent(requireContext(), FloatingBarActivity::class.java))
+            true
+        }
+        findPreference<Preference>("elastic_messages_editor")?.setOnPreferenceClickListener {
+            startActivity(Intent(requireContext(), ElasticMessagesActivity::class.java))
             true
         }
         findPreference<Preference>("material_expressive_editor")?.setOnPreferenceClickListener {

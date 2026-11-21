@@ -694,4 +694,12 @@
     <string name="elastic_hold_delay_sum">Time to hold before gel stretch engages (lower = faster, higher = easier swipe-to-reply)</string>
     <string name="elastic_haptic">Elastic haptic feedback</string>
     <string name="elastic_haptic_sum">Subtle vibration when grabbing and releasing stretched messages</string>
+    <string name="elastic_enable_title">Enable elastic messages</string>
+    <string name="elastic_reset">Reset</string>
+    <string name="elastic_preset_soft">Soft</string>
+    <string name="elastic_preset_jelly">Jelly</string>
+    <string name="elastic_preset_bouncy">Bouncy</string>
+    <string name="elastic_preview_hint">Drag &amp; release the bubbles below to test live</string>
+    <string name="elastic_preview_msg1">Pull and stretch me!</string>
+    <string name="elastic_preview_msg2">Watch how bouncy it is</string>
 </resources>

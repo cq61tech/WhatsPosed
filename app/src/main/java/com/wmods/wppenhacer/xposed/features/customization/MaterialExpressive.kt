@@ -327,6 +327,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun flattenTopBar(view: View, palette: ExpressivePalette, isConv: Boolean, config: Config) {
+        if (isConv && xprefs.getBoolean("liquid_glass_chat", false)) return
         view.elevation = 0f
         view.stateListAnimator = null
         if (!isConv) {
@@ -504,7 +505,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             styleSearchPillClean(view, palette, config)
         }
 
-        if (config.chatComposer && isConv && entry in COMPOSER_NAMES) {
+        if (config.chatComposer && isConv && !xprefs.getBoolean("liquid_glass_chat", false) && entry in COMPOSER_NAMES) {
             applyPillBackground(view, palette.cardHigh, palette.outline, 26f, config.cardOutline)
         }
 
@@ -592,7 +593,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             return
         }
 
-        if (config.chatComposer && isConv && entry in COMPOSER_NAMES) {
+        if (config.chatComposer && isConv && !xprefs.getBoolean("liquid_glass_chat", false) && entry in COMPOSER_NAMES) {
             view.post {
                 runCatching {
                     applyPillBackground(view, palette.cardHigh, palette.outline, 26f, config.cardOutline)
