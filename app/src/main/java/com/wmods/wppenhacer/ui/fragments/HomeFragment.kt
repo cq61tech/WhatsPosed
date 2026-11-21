@@ -1,5 +1,6 @@
 package com.wmods.wppenhacer.ui.fragments
 
+import android.util.Log
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
