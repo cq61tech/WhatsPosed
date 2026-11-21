@@ -7,6 +7,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Canvas
@@ -15,6 +16,7 @@ import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -22,6 +24,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -35,10 +38,13 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.wmods.wppenhacer.xposed.core.Feature
 import com.wmods.wppenhacer.xposed.core.WppCore
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 import java.util.WeakHashMap
 import kotlin.math.abs
@@ -48,7 +54,9 @@ import kotlin.math.min
 class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
     Feature(loader, preferences) {
 
-    private enum class IconKind { PLUS, CLOSE, BOMBER }
+    private enum class IconKind { PLUS, CLOSE, BOMBER, REPEATER, SNIPPETS, TIMER, TRASH }
+
+    private enum class TaskKind { NONE, BOMBER, TIMER }
 
     private data class ToolEntry(
         val id: String,
@@ -58,15 +66,23 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         val action: (Activity) -> Unit
     )
 
+    private data class SnippetItem(
+        val title: String,
+        val body: String
+    )
+
     private data class Palette(
         val accent: Int,
         val accentRunning: Int,
+        val accentTimer: Int,
         val surface: Int,
         val surfaceStroke: Int,
         val fieldBg: Int,
         val fieldStroke: Int,
         val tonalBg: Int,
         val tonalIcon: Int,
+        val dangerBg: Int,
+        val dangerIcon: Int,
         val closeBg: Int,
         val textPrimary: Int,
         val textSecondary: Int,
@@ -75,13 +91,25 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
 
     private class ActivityState(
         val handler: Handler = Handler(Looper.getMainLooper()),
-        var bombing: Boolean = false,
+        var taskKind: TaskKind = TaskKind.NONE,
         var expanded: Boolean = false,
         var collapsedX: Float = 0f,
         var collapsedY: Float = 0f,
         var positioned: Boolean = false,
         var morphAnimator: ValueAnimator? = null
-    )
+    ) {
+        val isBusy: Boolean
+            get() = taskKind != TaskKind.NONE
+    }
+
+    private class MaxHeightScrollView(context: Context, private val maxH: Int) : ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val mode = MeasureSpec.getMode(heightMeasureSpec)
+            val size = MeasureSpec.getSize(heightMeasureSpec)
+            val capped = if (mode == MeasureSpec.UNSPECIFIED) maxH else min(size, maxH)
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(capped, MeasureSpec.AT_MOST))
+        }
+    }
 
     private val states = WeakHashMap<Activity, ActivityState>()
 
@@ -98,7 +126,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                 }
                 WppCore.ActivityChangeState.ChangeType.PAUSED -> {
                     activity.runOnUiThread {
-                        stopBomber(activity)
+                        cancelActiveTask(activity)
                         collapseImmediate(activity)
                     }
                 }
@@ -124,12 +152,15 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         Palette(
             accent = 0xFF1DAA61.toInt(),
             accentRunning = 0xFFD9383A.toInt(),
+            accentTimer = 0xFFD98218.toInt(),
             surface = 0xFF17211D.toInt(),
             surfaceStroke = 0xFF2B3E36.toInt(),
             fieldBg = 0xFF22302A.toInt(),
             fieldStroke = 0xFF344C42.toInt(),
             tonalBg = 0xFF1F3D2F.toInt(),
             tonalIcon = 0xFF6EF0A8.toInt(),
+            dangerBg = 0xFF3D2224.toInt(),
+            dangerIcon = 0xFFF28B82.toInt(),
             closeBg = 0xFF25332D.toInt(),
             textPrimary = 0xFFEDF6F1.toInt(),
             textSecondary = 0xFF9BB4A8.toInt(),
@@ -139,12 +170,15 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         Palette(
             accent = 0xFF179C56.toInt(),
             accentRunning = 0xFFD32F2F.toInt(),
+            accentTimer = 0xFFC9760E.toInt(),
             surface = 0xFFF3FAF6.toInt(),
             surfaceStroke = 0xFFD0E5D9.toInt(),
             fieldBg = 0xFFE3F1E9.toInt(),
             fieldStroke = 0xFFBCD9C8.toInt(),
             tonalBg = 0xFFCDEFD9.toInt(),
             tonalIcon = 0xFF0E683B.toInt(),
+            dangerBg = 0xFFFCE4E4.toInt(),
+            dangerIcon = 0xFFC62828.toInt(),
             closeBg = 0xFFE1EEE6.toInt(),
             textPrimary = 0xFF13221B.toInt(),
             textSecondary = 0xFF4F6B5D.toInt(),
@@ -153,12 +187,10 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun buildTools(): List<ToolEntry> = listOf(
-        ToolEntry(
-            id = "bomber",
-            labelEn = "Bomber",
-            labelTr = "Bomber",
-            icon = IconKind.BOMBER
-        ) { showBomberDialog(it) }
+        ToolEntry("bomber", "Bomber", "Bomber", IconKind.BOMBER) { showBomberDialog(it) },
+        ToolEntry("repeater", "Repeater", "Çoğaltıcı", IconKind.REPEATER) { showRepeaterDialog(it) },
+        ToolEntry("snippets", "Snippets", "Şablonlar", IconKind.SNIPPETS) { showSnippetsDialog(it) },
+        ToolEntry("timer", "Timer", "Zamanlayıcı", IconKind.TIMER) { showTimerDialog(it) }
     )
 
     private fun dp(activity: Activity, value: Float): Int =
@@ -169,6 +201,44 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
 
     private fun stateOf(activity: Activity): ActivityState =
         states.getOrPut(activity) { ActivityState() }
+
+    private fun getChatEntry(activity: Activity): EditText? {
+        val id = activity.resources.getIdentifier("entry", "id", activity.packageName)
+        return if (id != 0) activity.findViewById(id) else null
+    }
+
+    private fun getSendView(activity: Activity): View? {
+        val id = activity.resources.getIdentifier("send", "id", activity.packageName)
+        return if (id != 0) activity.findViewById(id) else null
+    }
+
+    private fun insertToChat(activity: Activity, text: String): Boolean {
+        val input = getChatEntry(activity)
+        if (input == null) {
+            Toast.makeText(
+                activity,
+                if (isTurkish(activity)) "Mesaj kutusu bulunamadı" else "Message input not found",
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
+        }
+        input.setText(text)
+        input.setSelection(text.length)
+        input.requestFocus()
+        return true
+    }
+
+    private fun sendOnceToChat(activity: Activity, text: String) {
+        if (!insertToChat(activity, text)) return
+        stateOf(activity).handler.postDelayed({
+            if (activity.isFinishing || activity.isDestroyed) return@postDelayed
+            val sendBtn = getSendView(activity)
+            if (sendBtn != null && sendBtn.visibility == View.VISIBLE) {
+                sendBtn.performClick()
+                pulseBubble(activity)
+            }
+        }, 65L)
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun attachBubble(activity: Activity) {
@@ -197,9 +267,10 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         val countView = TextView(activity).apply {
             tag = COUNT_TAG
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             gravity = Gravity.CENTER
+            maxLines = 1
             visibility = View.GONE
         }
 
@@ -290,11 +361,17 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             if (w > 0 && h > 0) {
                 if (!state.positioned) {
                     state.collapsedX = (w - size - edge).coerceAtLeast(edge)
-                    state.collapsedY = ((h - size) * 0.46f).coerceIn(dpf(activity, 72f), (h - size - dpf(activity, 88f)).coerceAtLeast(dpf(activity, 72f)))
+                    state.collapsedY = ((h - size) * 0.46f).coerceIn(
+                        dpf(activity, 72f),
+                        (h - size - dpf(activity, 88f)).coerceAtLeast(dpf(activity, 72f))
+                    )
                     state.positioned = true
                 }
                 bubble.x = state.collapsedX.coerceIn(edge, (w - size - edge).coerceAtLeast(edge))
-                bubble.y = state.collapsedY.coerceIn(dpf(activity, 64f), (h - size - dpf(activity, 72f)).coerceAtLeast(dpf(activity, 64f)))
+                bubble.y = state.collapsedY.coerceIn(
+                    dpf(activity, 64f),
+                    (h - size - dpf(activity, 72f)).coerceAtLeast(dpf(activity, 64f))
+                )
             }
         }
 
@@ -335,13 +412,16 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
 
     private fun onBubbleClick(activity: Activity) {
         val state = stateOf(activity)
-        if (state.bombing) {
-            stopBomber(activity)
-            Toast.makeText(
-                activity,
-                if (isTurkish(activity)) "Durduruldu" else "Stopped",
-                Toast.LENGTH_SHORT
-            ).show()
+        if (state.isBusy) {
+            val wasTimer = state.taskKind == TaskKind.TIMER
+            cancelActiveTask(activity)
+            val tr = isTurkish(activity)
+            val msg = if (wasTimer) {
+                if (tr) "Zamanlayıcı iptal edildi" else "Timer cancelled"
+            } else {
+                if (tr) "Durduruldu" else "Stopped"
+            }
+            Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show()
             return
         }
         if (state.expanded) {
@@ -371,10 +451,10 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
 
         val expandedW = when (cols) {
             1 -> dp(activity, 148f)
-            2 -> dp(activity, 206f)
-            else -> dp(activity, 272f)
+            2 -> dp(activity, 214f)
+            else -> dp(activity, 276f)
         }
-        val expandedH = dp(activity, 52f + rows * 94f)
+        val expandedH = dp(activity, 54f + rows * 94f)
 
         val edge = dpf(activity, 14f)
         val minY = dpf(activity, 68f)
@@ -497,11 +577,15 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         val startRadius = dpf(activity, 28f)
         val endRadius = endSize / 2f
         val strokePx = dp(activity, 1f).coerceAtLeast(1)
-        val targetColor = if (state.bombing) palette.accentRunning else palette.accent
+        val targetColor = when (state.taskKind) {
+            TaskKind.BOMBER -> palette.accentRunning
+            TaskKind.TIMER -> palette.accentTimer
+            TaskKind.NONE -> palette.accent
+        }
         val argb = ArgbEvaluator()
         val lp = bubble.layoutParams
 
-        iconView.visibility = if (state.bombing) View.GONE else View.VISIBLE
+        iconView.visibility = if (state.isBusy) View.GONE else View.VISIBLE
 
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 230L
@@ -521,7 +605,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     it.scaleX = s
                     it.scaleY = s
                 }
-                if (!state.bombing) {
+                if (!state.isBusy) {
                     iconView.alpha = ((c - 0.35f) / 0.65f).coerceIn(0f, 1f)
                     iconView.rotation = (1f - c) * 45f
                 }
@@ -579,6 +663,19 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     @SuppressLint("ClickableViewAccessibility")
+    private fun applySquishTouch(view: View) {
+        view.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN ->
+                    v.animate().scaleX(0.90f).scaleY(0.90f).setDuration(85L).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(145L)
+                        .setInterpolator(OvershootInterpolator(1.2f)).start()
+            }
+            false
+        }
+    }
+
     private fun buildPanelContent(
         activity: Activity,
         tools: List<ToolEntry>,
@@ -607,27 +704,12 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val closeSize = dp(activity, 28f)
-        val closeBtn = FrameLayout(activity).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(palette.closeBg)
-            }
-            addView(
-                ImageView(activity).apply {
-                    setImageDrawable(VectorIconDrawable(IconKind.CLOSE, palette.textSecondary, dpf(activity, 1.9f)))
-                    val p = dp(activity, 7f)
-                    setPadding(p, p, p, p)
-                },
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-            )
-            setOnClickListener { collapsePanel(activity) }
+        val closeBtn = makeCircleIconButton(activity, 28f, 7f, IconKind.CLOSE, palette.closeBg, palette.textSecondary, 1.9f) {
+            collapsePanel(activity)
         }
+
         header.addView(title)
-        header.addView(closeBtn, LinearLayout.LayoutParams(closeSize, closeSize))
+        header.addView(closeBtn)
         rootCol.addView(
             header,
             LinearLayout.LayoutParams(
@@ -658,7 +740,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                 val cell = LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(dp(activity, 6f), dp(activity, 4f), dp(activity, 6f), dp(activity, 4f))
+                    setPadding(dp(activity, 4f), dp(activity, 4f), dp(activity, 4f), dp(activity, 4f))
                 }
 
                 val circleSize = dp(activity, 56f)
@@ -678,16 +760,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                             FrameLayout.LayoutParams.MATCH_PARENT
                         )
                     )
-                    setOnTouchListener { v, ev ->
-                        when (ev.actionMasked) {
-                            MotionEvent.ACTION_DOWN ->
-                                v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(90L).start()
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                                v.animate().scaleX(1f).scaleY(1f).setDuration(150L)
-                                    .setInterpolator(OvershootInterpolator(1.2f)).start()
-                        }
-                        false
-                    }
+                    applySquishTouch(this)
                     setOnClickListener {
                         collapsePanel(activity) {
                             item.action(activity)
@@ -702,6 +775,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                     gravity = Gravity.CENTER
                     maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                 }
 
                 cell.addView(circle, LinearLayout.LayoutParams(circleSize, circleSize))
@@ -734,6 +808,39 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         return rootCol
     }
 
+    private fun makeCircleIconButton(
+        activity: Activity,
+        sizeDp: Float,
+        padDp: Float,
+        icon: IconKind,
+        bgColor: Int,
+        iconColor: Int,
+        strokeDp: Float,
+        onClick: () -> Unit
+    ): FrameLayout {
+        val sz = dp(activity, sizeDp)
+        return FrameLayout(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(sz, sz)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(bgColor)
+            }
+            addView(
+                ImageView(activity).apply {
+                    setImageDrawable(VectorIconDrawable(icon, iconColor, dpf(activity, strokeDp)))
+                    val p = dp(activity, padDp)
+                    setPadding(p, p, p, p)
+                },
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            applySquishTouch(this)
+            setOnClickListener { onClick() }
+        }
+    }
+
     private fun makeFieldLabel(activity: Activity, text: String, palette: Palette): TextView =
         TextView(activity).apply {
             this.text = text
@@ -748,14 +855,22 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         hintText: String,
         palette: Palette,
         numeric: Boolean = false,
-        initial: String = ""
+        initial: String = "",
+        multiline: Boolean = false
     ): EditText = EditText(activity).apply {
         hint = hintText
         if (initial.isNotEmpty()) setText(initial)
         setTextColor(palette.textPrimary)
         setHintTextColor(palette.textSecondary)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
-        if (numeric) inputType = InputType.TYPE_CLASS_NUMBER
+        if (numeric) {
+            inputType = InputType.TYPE_CLASS_NUMBER
+        } else if (multiline) {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2
+            maxLines = 4
+            gravity = Gravity.TOP or Gravity.START
+        }
         background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dpf(activity, 16f)
@@ -767,11 +882,64 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         setPadding(ph, pv, ph, pv)
     }
 
-    private fun showBomberDialog(activity: Activity) {
-        if (activity.isFinishing || activity.isDestroyed) return
-        val tr = isTurkish(activity)
-        val palette = paletteFor(activity)
+    private fun makePillButton(
+        activity: Activity,
+        label: String,
+        bgColor: Int,
+        textColor: Int,
+        hPadDp: Float = 20f,
+        onClick: () -> Unit
+    ): TextView = TextView(activity).apply {
+        text = label
+        setTextColor(textColor)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        gravity = Gravity.CENTER
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpf(activity, 22f)
+            setColor(bgColor)
+        }
+        setPadding(dp(activity, hPadDp), dp(activity, 10f), dp(activity, hPadDp), dp(activity, 10f))
+        applySquishTouch(this)
+        setOnClickListener { onClick() }
+    }
 
+    private fun makeSelectableChip(
+        activity: Activity,
+        label: String,
+        selected: Boolean,
+        palette: Palette
+    ): TextView = TextView(activity).apply {
+        text = label
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        gravity = Gravity.CENTER
+        setPadding(dp(activity, 12f), dp(activity, 8f), dp(activity, 12f), dp(activity, 8f))
+        applyChipStyle(this, selected, palette, activity)
+        applySquishTouch(this)
+    }
+
+    private fun applyChipStyle(chip: TextView, selected: Boolean, palette: Palette, activity: Activity) {
+        chip.setTextColor(if (selected) palette.tonalIcon else palette.textSecondary)
+        chip.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpf(activity, 18f)
+            setColor(if (selected) palette.tonalBg else palette.fieldBg)
+            setStroke(
+                dp(activity, 1f).coerceAtLeast(1),
+                if (selected) palette.tonalIcon else palette.fieldStroke
+            )
+        }
+    }
+
+    private fun createExpressiveDialog(
+        activity: Activity,
+        palette: Palette,
+        icon: IconKind,
+        titleText: String,
+        trailingAction: View? = null
+    ): Pair<Dialog, LinearLayout> {
         val dialog = Dialog(activity)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -796,15 +964,16 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val badgeSize = dp(activity, 40f)
         val badge = FrameLayout(activity).apply {
+            val sz = dp(activity, 40f)
+            layoutParams = LinearLayout.LayoutParams(sz, sz)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(palette.tonalBg)
             }
             addView(
                 ImageView(activity).apply {
-                    setImageDrawable(VectorIconDrawable(IconKind.BOMBER, palette.tonalIcon, dpf(activity, 2f)))
+                    setImageDrawable(VectorIconDrawable(icon, palette.tonalIcon, dpf(activity, 2f)))
                     val p = dp(activity, 10f)
                     setPadding(p, p, p, p)
                 },
@@ -816,15 +985,26 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         }
 
         val titleView = TextView(activity).apply {
-            text = "Message Bomber"
+            text = titleText
             setTextColor(palette.textPrimary)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(activity, 12f), 0, 0, 0)
+            setPadding(dp(activity, 12f), 0, dp(activity, 8f), 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        headerRow.addView(badge, LinearLayout.LayoutParams(badgeSize, badgeSize))
+        headerRow.addView(badge)
         headerRow.addView(titleView)
+        if (trailingAction != null) {
+            headerRow.addView(trailingAction)
+        } else {
+            headerRow.addView(
+                makeCircleIconButton(activity, 30f, 8f, IconKind.CLOSE, palette.closeBg, palette.textSecondary, 1.9f) {
+                    dialog.dismiss()
+                }
+            )
+        }
+
         card.addView(
             headerRow,
             LinearLayout.LayoutParams(
@@ -835,10 +1015,36 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             }
         )
 
+        return dialog to card
+    }
+
+    private fun presentExpressiveDialog(activity: Activity, dialog: Dialog, card: View, widthDp: Float = 320f) {
+        dialog.setContentView(card)
+        val screenW = activity.resources.displayMetrics.widthPixels
+        val dialogW = min(dp(activity, widthDp), screenW - dp(activity, 32f))
+        dialog.window?.setLayout(dialogW, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.show()
+        card.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(240L)
+            .setInterpolator(OvershootInterpolator(0.95f))
+            .start()
+    }
+
+    private fun showBomberDialog(activity: Activity) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(activity, palette, IconKind.BOMBER, "Message Bomber")
+
+        val draft = getChatEntry(activity)?.text?.toString()?.trim().orEmpty()
         val messageInput = makeExpressiveInput(
             activity,
             if (tr) "Gönderilecek metin" else "Text to send",
-            palette
+            palette,
+            initial = draft
         )
         card.addView(makeFieldLabel(activity, if (tr) "Mesaj" else "Message", palette))
         card.addView(
@@ -851,9 +1057,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             }
         )
 
-        val numbersRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val numbersRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
 
         val countCol = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val countInput = makeExpressiveInput(activity, "5", palette, numeric = true)
@@ -891,49 +1095,23 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
         }
-
-        val cancelBtn = TextView(activity).apply {
-            text = if (tr) "İptal" else "Cancel"
-            setTextColor(palette.textSecondary)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpf(activity, 22f)
-                setColor(palette.closeBg)
-            }
-            setPadding(dp(activity, 18f), dp(activity, 10f), dp(activity, 18f), dp(activity, 10f))
-            setOnClickListener { dialog.dismiss() }
+        val cancelBtn = makePillButton(activity, if (tr) "İptal" else "Cancel", palette.closeBg, palette.textSecondary, 18f) {
+            dialog.dismiss()
         }
-
-        val startBtn = TextView(activity).apply {
-            text = if (tr) "Başlat" else "Start"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpf(activity, 22f)
-                setColor(palette.accent)
+        val startBtn = makePillButton(activity, if (tr) "Başlat" else "Start", palette.accent, Color.WHITE, 22f) {
+            val text = messageInput.text?.toString()?.trim().orEmpty()
+            val count = countInput.text?.toString()?.toIntOrNull() ?: 0
+            val delay = (delayInput.text?.toString()?.toLongOrNull() ?: 250L).coerceAtLeast(80L)
+            if (text.isEmpty() || count <= 0) {
+                Toast.makeText(
+                    activity,
+                    if (tr) "Geçerli mesaj ve adet girin" else "Enter valid message and count",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@makePillButton
             }
-            setPadding(dp(activity, 22f), dp(activity, 10f), dp(activity, 22f), dp(activity, 10f))
-            setOnClickListener {
-                val text = messageInput.text?.toString()?.trim().orEmpty()
-                val count = countInput.text?.toString()?.toIntOrNull() ?: 0
-                val delay = (delayInput.text?.toString()?.toLongOrNull() ?: 250L).coerceAtLeast(80L)
-                if (text.isEmpty() || count <= 0) {
-                    Toast.makeText(
-                        activity,
-                        if (tr) "Geçerli mesaj ve adet girin" else "Enter valid message and count",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    return@setOnClickListener
-                }
-                dialog.dismiss()
-                startBomber(activity, text, count, delay)
-            }
+            dialog.dismiss()
+            startBomber(activity, text, count, delay)
         }
 
         buttonsRow.addView(
@@ -948,19 +1126,546 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         buttonsRow.addView(startBtn)
         card.addView(buttonsRow)
 
-        dialog.setContentView(card)
-        val screenW = activity.resources.displayMetrics.widthPixels
-        val dialogW = min(dp(activity, 316f), screenW - dp(activity, 36f))
-        dialog.window?.setLayout(dialogW, ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.show()
+        presentExpressiveDialog(activity, dialog, card)
+    }
 
-        card.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(240L)
-            .setInterpolator(OvershootInterpolator(0.95f))
-            .start()
+    private fun showRepeaterDialog(activity: Activity) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.REPEATER,
+            if (tr) "Metin Çoğaltıcı" else "Text Repeater"
+        )
+
+        val draft = getChatEntry(activity)?.text?.toString()?.trim().orEmpty()
+        val textInput = makeExpressiveInput(
+            activity,
+            if (tr) "Çoğaltılacak metin" else "Text to repeat",
+            palette,
+            initial = draft
+        )
+        card.addView(makeFieldLabel(activity, if (tr) "Metin" else "Text", palette))
+        card.addView(
+            textInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 12f)
+            }
+        )
+
+        val countInput = makeExpressiveInput(activity, "10", palette, numeric = true, initial = "10")
+        card.addView(makeFieldLabel(activity, if (tr) "Tekrar sayısı" else "Repeat count", palette))
+        card.addView(
+            countInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 12f)
+            }
+        )
+
+        val separators = listOf(
+            (if (tr) "Alt satır" else "New line") to "
+",
+            (if (tr) "Boşluk" else "Space") to " ",
+            (if (tr) "Bitişik" else "None") to ""
+        )
+        var selectedIdx = 0
+        val chipViews = mutableListOf<TextView>()
+
+        card.addView(makeFieldLabel(activity, if (tr) "Ayırıcı" else "Separator", palette))
+        val chipsRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        separators.forEachIndexed { idx, (label, _) ->
+            val chip = makeSelectableChip(activity, label, idx == selectedIdx, palette)
+            chip.setOnClickListener {
+                selectedIdx = idx
+                chipViews.forEachIndexed { cIdx, view ->
+                    applyChipStyle(view, cIdx == selectedIdx, palette, activity)
+                }
+            }
+            chipViews.add(chip)
+            chipsRow.addView(
+                chip,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (idx > 0) marginStart = dp(activity, 6f)
+                }
+            )
+        }
+        card.addView(
+            chipsRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 18f)
+            }
+        )
+
+        fun buildOutput(): String? {
+            val base = textInput.text?.toString().orEmpty()
+            val count = countInput.text?.toString()?.toIntOrNull() ?: 0
+            if (base.isEmpty() || count <= 0) {
+                Toast.makeText(
+                    activity,
+                    if (tr) "Geçerli metin ve sayı girin" else "Enter valid text and count",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return null
+            }
+            val sep = separators[selectedIdx].second
+            val maxChars = 60000
+            val sb = StringBuilder(min(maxChars, (base.length + sep.length) * count))
+            for (i in 0 until count) {
+                if (i > 0) {
+                    if (sb.length + sep.length > maxChars) break
+                    sb.append(sep)
+                }
+                if (sb.length + base.length > maxChars) break
+                sb.append(base)
+            }
+            return sb.toString()
+        }
+
+        val buttonsRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        val insertBtn = makePillButton(activity, if (tr) "Kutuya Yaz" else "Insert", palette.tonalBg, palette.tonalIcon, 16f) {
+            val result = buildOutput() ?: return@makePillButton
+            dialog.dismiss()
+            insertToChat(activity, result)
+        }
+        val sendBtn = makePillButton(activity, if (tr) "Gönder" else "Send", palette.accent, Color.WHITE, 20f) {
+            val result = buildOutput() ?: return@makePillButton
+            dialog.dismiss()
+            sendOnceToChat(activity, result)
+        }
+
+        buttonsRow.addView(
+            insertBtn,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dp(activity, 8f)
+            }
+        )
+        buttonsRow.addView(sendBtn)
+        card.addView(buttonsRow)
+
+        presentExpressiveDialog(activity, dialog, card)
+    }
+
+    private fun loadSnippets(activity: Activity): MutableList<SnippetItem> {
+        val sp = activity.applicationContext.getSharedPreferences(STORAGE_PREFS, Context.MODE_PRIVATE)
+        val raw = sp.getString(KEY_SNIPPETS, null) ?: return mutableListOf()
+        val list = mutableListOf<SnippetItem>()
+        runCatching {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val body = obj.optString("b", "")
+                if (body.isNotEmpty()) {
+                    list.add(SnippetItem(obj.optString("t", ""), body))
+                }
+            }
+        }
+        return list
+    }
+
+    private fun saveSnippets(activity: Activity, list: List<SnippetItem>) {
+        val arr = JSONArray()
+        list.forEach { item ->
+            arr.put(JSONObject().apply {
+                put("t", item.title)
+                put("b", item.body)
+            })
+        }
+        activity.applicationContext
+            .getSharedPreferences(STORAGE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_SNIPPETS, arr.toString())
+            .apply()
+    }
+
+    private fun showSnippetsDialog(activity: Activity) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+
+        lateinit var renderList: () -> Unit
+
+        val addBtn = makeCircleIconButton(activity, 32f, 8f, IconKind.PLUS, palette.accent, Color.WHITE, 2.2f) {
+            showAddSnippetDialog(activity) {
+                renderList()
+            }
+        }
+
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.SNIPPETS,
+            if (tr) "Hazır Şablonlar" else "Snippets",
+            trailingAction = addBtn
+        )
+
+        val listContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val scroll = MaxHeightScrollView(activity, dp(activity, 290f)).apply {
+            isVerticalScrollBarEnabled = false
+            addView(listContainer)
+        }
+        card.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 14f)
+            }
+        )
+
+        renderList = {
+            listContainer.removeAllViews()
+            val snippets = loadSnippets(activity)
+            if (snippets.isEmpty()) {
+                val emptyView = TextView(activity).apply {
+                    text = if (tr) {
+                        "Henüz şablon yok.
+Sağ üstteki + butonundan ekleyebilirsin."
+                    } else {
+                        "No snippets yet.
+Tap + above to save one."
+                    }
+                    setTextColor(palette.textSecondary)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                    gravity = Gravity.CENTER
+                    setPadding(dp(activity, 12f), dp(activity, 24f), dp(activity, 12f), dp(activity, 24f))
+                }
+                listContainer.addView(
+                    emptyView,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            } else {
+                snippets.forEachIndexed { index, item ->
+                    val rowCard = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = dpf(activity, 18f)
+                            setColor(palette.fieldBg)
+                            setStroke(dp(activity, 1f).coerceAtLeast(1), palette.fieldStroke)
+                        }
+                        setPadding(dp(activity, 12f), dp(activity, 10f), dp(activity, 10f), dp(activity, 10f))
+                    }
+
+                    val textCol = LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            marginEnd = dp(activity, 8f)
+                        }
+                        setOnClickListener {
+                            dialog.dismiss()
+                            insertToChat(activity, item.body)
+                        }
+                    }
+
+                    if (item.title.isNotEmpty()) {
+                        textCol.addView(TextView(activity).apply {
+                            text = item.title
+                            setTextColor(palette.textPrimary)
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                        })
+                    }
+
+                    textCol.addView(TextView(activity).apply {
+                        text = item.body
+                        setTextColor(if (item.title.isNotEmpty()) palette.textSecondary else palette.textPrimary)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (item.title.isNotEmpty()) 12.5f else 13.5f)
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+
+                    val sendNowBtn = makeCircleIconButton(
+                        activity,
+                        32f,
+                        8f,
+                        IconKind.BOMBER,
+                        palette.tonalBg,
+                        palette.tonalIcon,
+                        1.8f
+                    ) {
+                        dialog.dismiss()
+                        sendOnceToChat(activity, item.body)
+                    }
+
+                    val deleteBtn = makeCircleIconButton(
+                        activity,
+                        32f,
+                        8f,
+                        IconKind.TRASH,
+                        palette.dangerBg,
+                        palette.dangerIcon,
+                        1.8f
+                    ) {
+                        val updated = loadSnippets(activity)
+                        if (index in updated.indices) {
+                            updated.removeAt(index)
+                            saveSnippets(activity, updated)
+                            renderList()
+                        }
+                    }
+
+                    rowCard.addView(textCol)
+                    rowCard.addView(
+                        sendNowBtn,
+                        LinearLayout.LayoutParams(dp(activity, 32f), dp(activity, 32f)).apply {
+                            marginEnd = dp(activity, 6f)
+                        }
+                    )
+                    rowCard.addView(deleteBtn)
+
+                    listContainer.addView(
+                        rowCard,
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            if (index > 0) topMargin = dp(activity, 8f)
+                        }
+                    )
+                }
+            }
+        }
+
+        renderList()
+
+        val footerRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        footerRow.addView(
+            makePillButton(activity, if (tr) "Kapat" else "Close", palette.closeBg, palette.textSecondary, 20f) {
+                dialog.dismiss()
+            }
+        )
+        card.addView(footerRow)
+
+        presentExpressiveDialog(activity, dialog, card, 332f)
+    }
+
+    private fun showAddSnippetDialog(activity: Activity, onSaved: () -> Unit) {
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.SNIPPETS,
+            if (tr) "Yeni Şablon" else "New Snippet"
+        )
+
+        val titleInput = makeExpressiveInput(
+            activity,
+            if (tr) "Kısa isim (isteğe bağlı)" else "Label (optional)",
+            palette
+        )
+        card.addView(makeFieldLabel(activity, if (tr) "Başlık" else "Title", palette))
+        card.addView(
+            titleInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 12f)
+            }
+        )
+
+        val draft = getChatEntry(activity)?.text?.toString()?.trim().orEmpty()
+        val bodyInput = makeExpressiveInput(
+            activity,
+            if (tr) "Kaydedilecek mesaj" else "Message content",
+            palette,
+            initial = draft,
+            multiline = true
+        )
+        card.addView(makeFieldLabel(activity, if (tr) "İçerik" else "Content", palette))
+        card.addView(
+            bodyInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 18f)
+            }
+        )
+
+        val buttonsRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        val cancelBtn = makePillButton(activity, if (tr) "İptal" else "Cancel", palette.closeBg, palette.textSecondary, 18f) {
+            dialog.dismiss()
+        }
+        val saveBtn = makePillButton(activity, if (tr) "Kaydet" else "Save", palette.accent, Color.WHITE, 22f) {
+            val body = bodyInput.text?.toString()?.trim().orEmpty()
+            val title = titleInput.text?.toString()?.trim().orEmpty()
+            if (body.isEmpty()) {
+                Toast.makeText(
+                    activity,
+                    if (tr) "İçerik boş olamaz" else "Content cannot be empty",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@makePillButton
+            }
+            val list = loadSnippets(activity)
+            list.add(0, SnippetItem(title, body))
+            saveSnippets(activity, list)
+            dialog.dismiss()
+            onSaved()
+        }
+
+        buttonsRow.addView(
+            cancelBtn,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dp(activity, 8f)
+            }
+        )
+        buttonsRow.addView(saveBtn)
+        card.addView(buttonsRow)
+
+        presentExpressiveDialog(activity, dialog, card)
+    }
+
+    private fun showTimerDialog(activity: Activity) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.TIMER,
+            if (tr) "Zamanlı Gönderim" else "Timer Send"
+        )
+
+        val draft = getChatEntry(activity)?.text?.toString()?.trim().orEmpty()
+        val messageInput = makeExpressiveInput(
+            activity,
+            if (tr) "Süre dolunca gönderilecek mesaj" else "Message to send on timer",
+            palette,
+            initial = draft,
+            multiline = true
+        )
+        card.addView(makeFieldLabel(activity, if (tr) "Mesaj" else "Message", palette))
+        card.addView(
+            messageInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 12f)
+            }
+        )
+
+        val secondsInput = makeExpressiveInput(activity, "30", palette, numeric = true, initial = "30")
+        card.addView(makeFieldLabel(activity, if (tr) "Geri sayım (saniye)" else "Countdown (seconds)", palette))
+        card.addView(
+            secondsInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 10f)
+            }
+        )
+
+        val presets = listOf(
+            "10s" to 10,
+            "30s" to 30,
+            "60s" to 60,
+            (if (tr) "5dk" else "5m") to 300
+        )
+        val presetRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        val presetViews = mutableListOf<TextView>()
+        presets.forEachIndexed { idx, (label, secs) ->
+            val chip = makeSelectableChip(activity, label, secs == 30, palette)
+            chip.setOnClickListener {
+                secondsInput.setText(secs.toString())
+                secondsInput.setSelection(secondsInput.text.length)
+                presetViews.forEachIndexed { pIdx, v ->
+                    applyChipStyle(v, pIdx == idx, palette, activity)
+                }
+            }
+            presetViews.add(chip)
+            presetRow.addView(
+                chip,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (idx > 0) marginStart = dp(activity, 6f)
+                }
+            )
+        }
+        card.addView(
+            presetRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(activity, 18f)
+            }
+        )
+
+        val buttonsRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        val cancelBtn = makePillButton(activity, if (tr) "İptal" else "Cancel", palette.closeBg, palette.textSecondary, 18f) {
+            dialog.dismiss()
+        }
+        val startBtn = makePillButton(activity, if (tr) "Başlat" else "Start", palette.accentTimer, Color.WHITE, 22f) {
+            val text = messageInput.text?.toString()?.trim().orEmpty()
+            val seconds = secondsInput.text?.toString()?.toIntOrNull() ?: 0
+            if (text.isEmpty() || seconds <= 0) {
+                Toast.makeText(
+                    activity,
+                    if (tr) "Geçerli mesaj ve süre girin" else "Enter valid message and delay",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@makePillButton
+            }
+            dialog.dismiss()
+            startTimerSend(activity, text, seconds)
+        }
+
+        buttonsRow.addView(
+            cancelBtn,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dp(activity, 8f)
+            }
+        )
+        buttonsRow.addView(startBtn)
+        card.addView(buttonsRow)
+
+        presentExpressiveDialog(activity, dialog, card)
     }
 
     private fun startBomber(activity: Activity, text: String, total: Int, delayMs: Long) {
@@ -977,8 +1682,8 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
 
         val state = stateOf(activity)
         state.handler.removeCallbacksAndMessages(null)
-        state.bombing = true
-        updateBubbleRunning(activity, true, total)
+        state.taskKind = TaskKind.BOMBER
+        updateBubbleTask(activity, TaskKind.BOMBER, total.toString())
         runBomberStep(activity, state, entryId, sendId, text, total, delayMs)
     }
 
@@ -991,34 +1696,71 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         remaining: Int,
         delayMs: Long
     ) {
-        if (!state.bombing || remaining <= 0 || activity.isFinishing || activity.isDestroyed) {
-            stopBomber(activity)
+        if (state.taskKind != TaskKind.BOMBER || remaining <= 0 || activity.isFinishing || activity.isDestroyed) {
+            cancelActiveTask(activity)
             return
         }
         val input = activity.findViewById<EditText>(entryId)
         if (input == null) {
-            stopBomber(activity)
+            cancelActiveTask(activity)
             return
         }
-        updateBubbleRunning(activity, true, remaining)
+        updateBubbleTask(activity, TaskKind.BOMBER, remaining.toString())
         input.setText(text)
         input.setSelection(text.length)
         state.handler.postDelayed({
-            if (!state.bombing || activity.isFinishing || activity.isDestroyed) return@postDelayed
+            if (state.taskKind != TaskKind.BOMBER || activity.isFinishing || activity.isDestroyed) return@postDelayed
             val sendBtn = activity.findViewById<View>(sendId)
             if (sendBtn != null && sendBtn.visibility == View.VISIBLE) {
                 sendBtn.performClick()
                 pulseBubble(activity)
             }
             val next = remaining - 1
-            if (next > 0 && state.bombing) {
+            if (next > 0 && state.taskKind == TaskKind.BOMBER) {
                 state.handler.postDelayed({
                     runBomberStep(activity, state, entryId, sendId, text, next, delayMs)
                 }, delayMs)
             } else {
-                stopBomber(activity)
+                cancelActiveTask(activity)
             }
         }, 60L)
+    }
+
+    private fun formatTimerBadge(sec: Int): String = when {
+        sec < 60 -> "${sec}s"
+        sec < 3600 -> "${sec / 60}:${(sec % 60).toString().padStart(2, '0')}"
+        else -> "${sec / 3600}h"
+    }
+
+    private fun startTimerSend(activity: Activity, text: String, totalSeconds: Int) {
+        if (getChatEntry(activity) == null) {
+            Toast.makeText(
+                activity,
+                if (isTurkish(activity)) "Mesaj kutusu bulunamadı" else "Message input not found",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        val state = stateOf(activity)
+        state.handler.removeCallbacksAndMessages(null)
+        state.taskKind = TaskKind.TIMER
+        runTimerTick(activity, state, text, totalSeconds)
+    }
+
+    private fun runTimerTick(activity: Activity, state: ActivityState, text: String, remainingSec: Int) {
+        if (state.taskKind != TaskKind.TIMER || activity.isFinishing || activity.isDestroyed) {
+            cancelActiveTask(activity)
+            return
+        }
+        if (remainingSec <= 0) {
+            cancelActiveTask(activity)
+            sendOnceToChat(activity, text)
+            return
+        }
+        updateBubbleTask(activity, TaskKind.TIMER, formatTimerBadge(remainingSec))
+        state.handler.postDelayed({
+            runTimerTick(activity, state, text, remainingSec - 1)
+        }, 1000L)
     }
 
     private fun pulseBubble(activity: Activity) {
@@ -1034,16 +1776,16 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             .start()
     }
 
-    private fun stopBomber(activity: Activity) {
+    private fun cancelActiveTask(activity: Activity) {
         states[activity]?.let {
-            it.bombing = false
+            it.taskKind = TaskKind.NONE
             it.handler.removeCallbacksAndMessages(null)
         }
-        updateBubbleRunning(activity, false, 0)
+        updateBubbleTask(activity, TaskKind.NONE, "")
     }
 
     private fun detachBubble(activity: Activity) {
-        stopBomber(activity)
+        cancelActiveTask(activity)
         states[activity]?.morphAnimator?.cancel()
         states.remove(activity)
         val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
@@ -1051,20 +1793,27 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         root.findViewWithTag<View>(BUBBLE_TAG)?.let { root.removeView(it) }
     }
 
-    private fun updateBubbleRunning(activity: Activity, running: Boolean, remaining: Int) {
+    private fun updateBubbleTask(activity: Activity, kind: TaskKind, badgeText: String) {
         val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
         val bubble = root.findViewWithTag<FrameLayout>(BUBBLE_TAG) ?: return
         val palette = paletteFor(activity)
         val state = states[activity]
         if (state?.expanded != true) {
-            (bubble.background as? GradientDrawable)?.setColor(
-                if (running) palette.accentRunning else palette.accent
-            )
+            val color = when (kind) {
+                TaskKind.BOMBER -> palette.accentRunning
+                TaskKind.TIMER -> palette.accentTimer
+                TaskKind.NONE -> palette.accent
+            }
+            (bubble.background as? GradientDrawable)?.setColor(color)
+            val busy = kind != TaskKind.NONE
             bubble.findViewWithTag<View>(ICON_TAG)?.visibility =
-                if (running) View.GONE else View.VISIBLE
+                if (busy) View.GONE else View.VISIBLE
             bubble.findViewWithTag<TextView>(COUNT_TAG)?.apply {
-                visibility = if (running) View.VISIBLE else View.GONE
-                if (running) text = remaining.toString()
+                visibility = if (busy) View.VISIBLE else View.GONE
+                if (busy) {
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, if (badgeText.length >= 4) 11.5f else 14.5f)
+                    text = badgeText
+                }
             }
         }
     }
@@ -1088,6 +1837,8 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             val w = b.width().toFloat()
             val h = b.height().toFloat()
             if (w <= 0f || h <= 0f) return
+            val l = b.left.toFloat()
+            val t = b.top.toFloat()
             val cx = b.exactCenterX()
             val cy = b.exactCenterY()
 
@@ -1103,8 +1854,6 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     canvas.drawLine(cx + r, cy - r, cx - r, cy + r, strokePaint)
                 }
                 IconKind.BOMBER -> {
-                    val l = b.left.toFloat()
-                    val t = b.top.toFloat()
                     val path = Path().apply {
                         moveTo(l + w * 0.88f, t + h * 0.14f)
                         lineTo(l + w * 0.14f, t + h * 0.44f)
@@ -1120,6 +1869,57 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                         t + h * 0.16f,
                         strokePaint
                     )
+                }
+                IconKind.REPEATER -> {
+                    val topPath = Path().apply {
+                        moveTo(l + w * 0.18f, t + h * 0.42f)
+                        lineTo(l + w * 0.18f, t + h * 0.30f)
+                        quadTo(l + w * 0.18f, t + h * 0.22f, l + w * 0.28f, t + h * 0.22f)
+                        lineTo(l + w * 0.80f, t + h * 0.22f)
+                    }
+                    canvas.drawPath(topPath, strokePaint)
+                    canvas.drawLine(l + w * 0.68f, t + h * 0.12f, l + w * 0.82f, t + h * 0.22f, strokePaint)
+                    canvas.drawLine(l + w * 0.68f, t + h * 0.32f, l + w * 0.82f, t + h * 0.22f, strokePaint)
+
+                    val botPath = Path().apply {
+                        moveTo(l + w * 0.82f, t + h * 0.58f)
+                        lineTo(l + w * 0.82f, t + h * 0.70f)
+                        quadTo(l + w * 0.82f, t + h * 0.78f, l + w * 0.72f, t + h * 0.78f)
+                        lineTo(l + w * 0.20f, t + h * 0.78f)
+                    }
+                    canvas.drawPath(botPath, strokePaint)
+                    canvas.drawLine(l + w * 0.32f, t + h * 0.68f, l + w * 0.18f, t + h * 0.78f, strokePaint)
+                    canvas.drawLine(l + w * 0.32f, t + h * 0.88f, l + w * 0.18f, t + h * 0.78f, strokePaint)
+                }
+                IconKind.SNIPPETS -> {
+                    val rect = RectF(l + w * 0.18f, t + h * 0.14f, l + w * 0.82f, t + h * 0.86f)
+                    val cr = min(w, h) * 0.14f
+                    canvas.drawRoundRect(rect, cr, cr, strokePaint)
+                    canvas.drawLine(l + w * 0.33f, t + h * 0.38f, l + w * 0.67f, t + h * 0.38f, strokePaint)
+                    canvas.drawLine(l + w * 0.33f, t + h * 0.54f, l + w * 0.67f, t + h * 0.54f, strokePaint)
+                    canvas.drawLine(l + w * 0.33f, t + h * 0.70f, l + w * 0.54f, t + h * 0.70f, strokePaint)
+                }
+                IconKind.TIMER -> {
+                    val r = min(w, h) * 0.33f
+                    val centerY = t + h * 0.56f
+                    canvas.drawLine(cx - r * 0.45f, t + h * 0.12f, cx + r * 0.45f, t + h * 0.12f, strokePaint)
+                    canvas.drawLine(cx, t + h * 0.12f, cx, centerY - r, strokePaint)
+                    canvas.drawCircle(cx, centerY, r, strokePaint)
+                    canvas.drawLine(cx, centerY, cx, centerY - r * 0.55f, strokePaint)
+                    canvas.drawLine(cx, centerY, cx + r * 0.45f, centerY + r * 0.22f, strokePaint)
+                }
+                IconKind.TRASH -> {
+                    canvas.drawLine(l + w * 0.18f, t + h * 0.26f, l + w * 0.82f, t + h * 0.26f, strokePaint)
+                    canvas.drawLine(l + w * 0.38f, t + h * 0.16f, l + w * 0.62f, t + h * 0.16f, strokePaint)
+                    val body = Path().apply {
+                        moveTo(l + w * 0.26f, t + h * 0.26f)
+                        lineTo(l + w * 0.32f, t + h * 0.84f)
+                        lineTo(l + w * 0.68f, t + h * 0.84f)
+                        lineTo(l + w * 0.74f, t + h * 0.26f)
+                    }
+                    canvas.drawPath(body, strokePaint)
+                    canvas.drawLine(l + w * 0.44f, t + h * 0.44f, l + w * 0.44f, t + h * 0.68f, strokePaint)
+                    canvas.drawLine(l + w * 0.56f, t + h * 0.44f, l + w * 0.56f, t + h * 0.68f, strokePaint)
                 }
             }
         }
@@ -1142,5 +1942,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         private const val PANEL_TAG = "wp_chat_floating_panel"
         private const val ICON_TAG = "wp_chat_floating_icon"
         private const val COUNT_TAG = "wp_chat_floating_count"
+        private const val STORAGE_PREFS = "wp_chat_tools_storage"
+        private const val KEY_SNIPPETS = "snippets_v1"
     }
 }
