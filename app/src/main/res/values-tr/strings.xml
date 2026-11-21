@@ -598,4 +598,6 @@
     <string name="wpme_sync_bubble_sum">Yüzen araç baloncuğunu otomatik olarak Monet paletine uyarlar</string>
     <string name="wpme_restart_hint">Tüm değişikliklerin temiz uygulanması için ayar sonrası WhatsApp uygulamasını yeniden başlat.</string>
     <string name="wpme_reset">Varsayılana sıfırla</string>
+    <string name="wpfb_preset_liquid">Liquid Glass</string>
+    <string name="wpfb_preset_liquid_sum">Sürüklenebilir sıvı cam mercekli ve ışığı kıran iOS 26 stili</string>
 </resources>

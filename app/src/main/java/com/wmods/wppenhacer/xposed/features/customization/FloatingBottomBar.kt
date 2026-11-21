@@ -17,16 +17,23 @@ import android.graphics.Matrix
 import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
@@ -34,6 +41,7 @@ import android.view.Window
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.wmods.wppenhacer.xposed.core.Feature
@@ -43,6 +51,9 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import java.util.WeakHashMap
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     Feature(loader, preferences) {
@@ -71,6 +82,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val textSizeSp: Int,
         val labelGapDp: Int,
         val glass: Boolean,
+        val liquid: Boolean,
         val glassAlpha: Int,
         val shadow: Boolean,
         val hideOnScroll: Boolean,
@@ -81,9 +93,15 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             for (v in intArrayOf(
                 iconSizeDp, if (ovalIndicator) 1 else 0, indicatorColor, selectedColor,
                 unselectedColor, if (hideLabels) 1 else 0, textSizeSp, labelGapDp,
+                if (liquid) 1 else 0,
             )) h = 31 * h + v
             return h
         }
+    }
+
+    private class WindowTouchHub {
+        var scrollHider: ScrollHider? = null
+        var liquidController: LiquidGlassController? = null
     }
 
     private val processedBars = WeakHashMap<ViewGroup, Boolean>()
@@ -93,29 +111,35 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     private val barStyles = WeakHashMap<ViewGroup, Style>()
     private val barColors = WeakHashMap<ViewGroup, Int>()
     private val glassDrawables = WeakHashMap<ViewGroup, GlassDrawable>()
+    private val liquidControllers = WeakHashMap<ViewGroup, LiquidGlassController>()
     private val styledViews = WeakHashMap<View, Int>()
-    private val scrollHooked = WeakHashMap<Activity, Boolean>()
+    private val touchHubs = WeakHashMap<Activity, WindowTouchHub>()
 
-    private fun readStyle(): Style = Style(
-        radiusDp = xprefs.getInt("floating_bottom_bar_radius", CORNER_RADIUS_DP),
-        bottomMarginDp = xprefs.getInt("fbb_bottom_margin", 16),
-        sideMarginDp = xprefs.getInt("fbb_side_margin", 12),
-        padVDp = xprefs.getInt("fbb_pad_v", 0),
-        padHDp = xprefs.getInt("fbb_pad_h", 0),
-        iconSizeDp = xprefs.getInt("fbb_icon_size", 0),
-        ovalIndicator = xprefs.getString("fbb_indicator", "default") == "oval",
-        indicatorColor = xprefs.getInt("fbb_indicator_color", 0),
-        selectedColor = xprefs.getInt("fbb_icon_selected", 0),
-        unselectedColor = xprefs.getInt("fbb_icon_unselected", 0),
-        hideLabels = xprefs.getBoolean("fbb_hide_labels", false),
-        textSizeSp = xprefs.getInt("fbb_text_size", 0),
-        labelGapDp = xprefs.getInt("fbb_label_gap", 0),
-        glass = xprefs.getBoolean("fbb_glass", false),
-        glassAlpha = xprefs.getInt("fbb_glass_alpha", 35),
-        shadow = xprefs.getBoolean("fbb_shadow", true),
-        hideOnScroll = xprefs.getBoolean("fbb_hide_scroll", false),
-        fade = xprefs.getString("fbb_hide_mode", "slide") == "fade",
-    )
+    private fun readStyle(): Style {
+        val preset = xprefs.getString("fbb_preset", "classic") ?: "classic"
+        val isLiquid = preset == "liquid"
+        return Style(
+            radiusDp = xprefs.getInt("floating_bottom_bar_radius", CORNER_RADIUS_DP),
+            bottomMarginDp = xprefs.getInt("fbb_bottom_margin", 16),
+            sideMarginDp = xprefs.getInt("fbb_side_margin", 12),
+            padVDp = xprefs.getInt("fbb_pad_v", 0),
+            padHDp = xprefs.getInt("fbb_pad_h", 0),
+            iconSizeDp = xprefs.getInt("fbb_icon_size", 0),
+            ovalIndicator = xprefs.getString("fbb_indicator", "default") == "oval",
+            indicatorColor = xprefs.getInt("fbb_indicator_color", 0),
+            selectedColor = xprefs.getInt("fbb_icon_selected", 0),
+            unselectedColor = xprefs.getInt("fbb_icon_unselected", 0),
+            hideLabels = xprefs.getBoolean("fbb_hide_labels", false),
+            textSizeSp = xprefs.getInt("fbb_text_size", 0),
+            labelGapDp = xprefs.getInt("fbb_label_gap", 0),
+            glass = isLiquid || xprefs.getBoolean("fbb_glass", false),
+            liquid = isLiquid,
+            glassAlpha = xprefs.getInt("fbb_glass_alpha", if (isLiquid) 22 else 35),
+            shadow = xprefs.getBoolean("fbb_shadow", true),
+            hideOnScroll = xprefs.getBoolean("fbb_hide_scroll", false),
+            fade = xprefs.getString("fbb_hide_mode", "slide") == "fade",
+        )
+    }
 
     override fun doHook() {
         if (!xprefs.getBoolean("floating_bottom_bar", false)) return
@@ -143,6 +167,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             setupAttempts.remove(bar)
             processedBars.remove(bar)
             glassDrawables[bar]?.detach()
+            liquidControllers.remove(bar)?.detach()
         }
     }
 
@@ -150,6 +175,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (processedBars.containsKey(bar)) {
             ensureBarOverlay(bar)
             glassDrawables[bar]?.attach()
+            liquidControllers[bar]?.syncLayout()
             return
         }
 
@@ -194,7 +220,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             val style = styleOf(bar)
             if (container.parent === rootView) {
                 updateOverlayLayout(rootView, container, bar, style)
-                applyTransparentShadowStyle(container, bar, style)
+                applyTransparentShadowStyle(rootView, container, bar, style)
                 positionFabsAboveBar(rootView, container)
                 return true
             }
@@ -210,9 +236,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             }
             rootView.addView(container, rootParams)
 
-            applyTransparentShadowStyle(container, bar, style)
+            applyTransparentShadowStyle(rootView, container, bar, style)
             positionFabsAboveBar(rootView, container)
-            installScrollHider(bar, container, style)
+            installTouchHub(bar, container, style)
 
             logDebug("FloatingBottomBar applied as overlay")
             return true
@@ -269,7 +295,12 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         return lastFrameLayout
     }
 
-    private fun applyTransparentShadowStyle(container: ViewGroup, bar: ViewGroup, style: Style) {
+    private fun applyTransparentShadowStyle(
+        rootView: FrameLayout,
+        container: ViewGroup,
+        bar: ViewGroup,
+        style: Style,
+    ) {
         container.setBackgroundColor(Color.TRANSPARENT)
 
         val parent = container.parent as? ViewGroup
@@ -297,7 +328,8 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             if (bar.background !is GlassDrawable) {
                 val glass = GlassDrawable(
                     container, bar, radius, barColor or (0xFF shl 24),
-                    style.glassAlpha, light, Utils.dipToPixels(1.2f).toFloat(),
+                    style.glassAlpha, light, Utils.dipToPixels(if (style.liquid) 1.35f else 1.2f).toFloat(),
+                    style.liquid,
                 )
                 bar.background = glass
                 glassDrawables[bar] = glass
@@ -305,7 +337,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             }
         } else {
             val transparentColor = (barColor and 0x00FFFFFF) or
-                    ((BACKGROUND_ALPHA * 255).toInt() shl 24)
+                ((BACKGROUND_ALPHA * 255).toInt() shl 24)
             val strokeColor = if (light) {
                 Color.argb((STROKE_ALPHA * 255).toInt(), 0, 0, 0)
             } else {
@@ -328,9 +360,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val sideMargin = Utils.dipToPixels(style.sideMarginDp.toFloat())
         val params = bar.layoutParams as? ViewGroup.MarginLayoutParams
         if (params != null && (params.width != ViewGroup.LayoutParams.MATCH_PARENT
-                    || params.height != ViewGroup.LayoutParams.WRAP_CONTENT
-                    || params.leftMargin != sideMargin || params.topMargin != 0
-                    || params.rightMargin != sideMargin || params.bottomMargin != 0)
+                || params.height != ViewGroup.LayoutParams.WRAP_CONTENT
+                || params.leftMargin != sideMargin || params.topMargin != 0
+                || params.rightMargin != sideMargin || params.bottomMargin != 0)
         ) {
             params.width = ViewGroup.LayoutParams.MATCH_PARENT
             params.height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -341,6 +373,21 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         enforcePadding(bar, style)
         styleItems(bar, style, light)
         installPaddingGuard(bar)
+
+        if (style.liquid) {
+            val controller = liquidControllers.getOrPut(bar) {
+                LiquidGlassController(
+                    rootView = rootView,
+                    container = container,
+                    bar = bar,
+                    light = light,
+                    tintColor = barColor or (0xFF shl 24),
+                    indicatorColor = style.indicatorColor,
+                )
+            }
+            controller.attach()
+            installTouchHub(bar, container, style)
+        }
     }
 
     private fun enforcePadding(bar: ViewGroup, style: Style) {
@@ -369,6 +416,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (paddingGuarded.put(bar, true) != null) return
         ViewCompat.setOnApplyWindowInsetsListener(bar) { view, insets ->
             enforcePadding(view as ViewGroup, styleOf(view))
+            liquidControllers[view]?.syncLayout()
             insets
         }
         bar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -380,6 +428,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 bar.layoutParams = params
             }
             styleItems(bar, style, isLightColor(barColors[bar] ?: 0xFF121212.toInt()))
+            liquidControllers[bar]?.syncLayout()
         }
     }
 
@@ -426,13 +475,18 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         var apiLabels = true
         if (customColors) {
             apiColors = callApi(bar, "setItemIconTintList", ColorStateList::class.java, csl) and
-                    callApi(bar, "setItemTextColor", ColorStateList::class.java, csl)
+                callApi(bar, "setItemTextColor", ColorStateList::class.java, csl)
         }
         if (iconPx > 0) apiSize = callApi(bar, "setItemIconSize", Int::class.javaPrimitiveType!!, iconPx)
         if (style.hideLabels) {
             apiLabels = callApi(bar, "setLabelVisibilityMode", Int::class.javaPrimitiveType!!, 2)
         }
-        if (style.indicatorColor != 0) {
+        if (style.liquid) {
+            callApi(
+                bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
+                ColorStateList.valueOf(Color.TRANSPARENT),
+            )
+        } else if (style.indicatorColor != 0) {
             callApi(
                 bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
                 ColorStateList.valueOf(style.indicatorColor),
@@ -465,7 +519,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                             val px = TypedValue.applyDimension(
                                 TypedValue.COMPLEX_UNIT_SP, style.textSizeSp.toFloat(), metrics,
                             )
-                            if (Math.abs(v.textSize - px) > 1f) {
+                            if (abs(v.textSize - px) > 1f) {
                                 v.setTextSize(TypedValue.COMPLEX_UNIT_SP, style.textSizeSp.toFloat())
                             }
                         }
@@ -493,6 +547,12 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun styleIndicator(view: View, style: Style, light: Boolean) {
+        if (style.liquid) {
+            view.background = ColorDrawable(Color.TRANSPARENT)
+            view.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            view.alpha = 0f
+            return
+        }
         if (style.ovalIndicator) {
             val fill = if (style.indicatorColor != 0) {
                 style.indicatorColor
@@ -513,16 +573,39 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         }
     }
 
-    private fun installScrollHider(bar: ViewGroup, container: ViewGroup, style: Style) {
-        if (!style.hideOnScroll) return
+    private fun installTouchHub(bar: ViewGroup, container: ViewGroup, style: Style) {
+        if (!style.hideOnScroll && !style.liquid) return
         val activity = findActivity(bar.context) ?: return
-        if (scrollHooked.put(activity, true) != null) return
+        val existing = touchHubs[activity]
+        if (existing != null) {
+            if (style.hideOnScroll && existing.scrollHider == null) {
+                existing.scrollHider = ScrollHider(container, bar, style.fade, liquidControllers[bar])
+            }
+            if (style.liquid) {
+                existing.liquidController = liquidControllers[bar]
+                existing.scrollHider?.attachLiquid(liquidControllers[bar])
+            }
+            return
+        }
+
         val window = activity.window ?: return
         val original = window.callback ?: return
-        val hider = ScrollHider(container, bar, style.fade)
+        val hub = WindowTouchHub().apply {
+            if (style.liquid) liquidController = liquidControllers[bar]
+            if (style.hideOnScroll) scrollHider = ScrollHider(container, bar, style.fade, liquidController)
+        }
+        touchHubs[activity] = hub
+
         val handler = InvocationHandler { _, method, args ->
             if (method.name == "dispatchTouchEvent" && args != null && args.isNotEmpty()) {
-                (args[0] as? MotionEvent)?.let { hider.onTouch(it) }
+                val ev = args[0] as? MotionEvent
+                if (ev != null) {
+                    val liquid = hub.liquidController
+                    if (liquid != null && liquid.onDispatchTouchEvent(ev, original)) {
+                        return@InvocationHandler true
+                    }
+                    hub.scrollHider?.onTouch(ev)
+                }
             }
             try {
                 method.invoke(original, *(args ?: emptyArray()))
@@ -617,11 +700,16 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private val container: ViewGroup,
         private val bar: ViewGroup,
         private val fade: Boolean,
+        private var liquid: LiquidGlassController? = null,
     ) {
         private var lastY = 0f
         private var accumulated = 0f
         private var tracking = false
         private var hidden = false
+
+        fun attachLiquid(controller: LiquidGlassController?) {
+            liquid = controller
+        }
 
         fun onTouch(e: MotionEvent) {
             when (e.actionMasked) {
@@ -650,23 +738,846 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             val loc = IntArray(2)
             bar.getLocationOnScreen(loc)
             return e.rawX >= loc[0] && e.rawX <= loc[0] + bar.width &&
-                    e.rawY >= loc[1] && e.rawY <= loc[1] + bar.height
+                e.rawY >= loc[1] && e.rawY <= loc[1] + bar.height
         }
 
         private fun setHidden(value: Boolean) {
             hidden = value
             container.animate().cancel()
+            val overlay = liquid?.overlayView
+            overlay?.animate()?.cancel()
             if (fade) {
-                if (!value) container.visibility = View.VISIBLE
+                if (!value) {
+                    container.visibility = View.VISIBLE
+                    overlay?.visibility = View.VISIBLE
+                }
                 container.animate().alpha(if (value) 0f else 1f).setDuration(180L)
                     .withEndAction { if (hidden) container.visibility = View.INVISIBLE }
                     .start()
+                overlay?.animate()?.alpha(if (value) 0f else 1f)?.setDuration(180L)
+                    ?.withEndAction { if (hidden) overlay.visibility = View.INVISIBLE }
+                    ?.start()
             } else {
                 val margin = (container.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
-                container.animate()
-                    .translationY(if (value) (container.height + margin).toFloat() else 0f)
-                    .setDuration(220L)
-                    .start()
+                val ty = if (value) (container.height + margin).toFloat() else 0f
+                container.animate().translationY(ty).setDuration(220L).start()
+                overlay?.animate()?.translationY(ty)?.setDuration(220L)?.start()
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private object LiquidAgsl {
+        private const val DOCK_SHADER = """
+            uniform shader content;
+            uniform float2 center;
+            uniform float2 halfSize;
+            uniform float radius;
+            uniform float2 texSize;
+            uniform float refractPx;
+            uniform float dispersion;
+            uniform float bezel;
+            uniform float isDark;
+
+            float sdRoundedBox(float2 p, float2 b, float r) {
+                float2 q = abs(p) - b + float2(r);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+
+            half4 main(float2 fragCoord) {
+                float2 p = fragCoord - center;
+                float d = sdRoundedBox(p, halfSize, radius);
+                if (d > 1.5) {
+                    return half4(0.0, 0.0, 0.0, 0.0);
+                }
+                float alpha = 1.0 - smoothstep(-0.8, 0.7, d);
+                float edgeDist = max(-d, 0.0);
+
+                float2 grad = float2(
+                    sdRoundedBox(p + float2(1.0, 0.0), halfSize, radius) - sdRoundedBox(p - float2(1.0, 0.0), halfSize, radius),
+                    sdRoundedBox(p + float2(0.0, 1.0), halfSize, radius) - sdRoundedBox(p - float2(0.0, 1.0), halfSize, radius)
+                );
+                float2 n = grad / max(length(grad), 0.0001);
+                float rim = 1.0 - smoothstep(0.0, max(bezel, 1.0), edgeDist);
+                float rim2 = rim * rim;
+
+                float2 baseCoord = fragCoord - n * (rim2 * refractPx);
+                float2 disp = n * (rim2 * dispersion);
+                float2 lo = float2(1.0, 1.0);
+                float2 hi = max(texSize - float2(1.0, 1.0), lo);
+
+                half4 cR = content.eval(clamp(baseCoord - disp, lo, hi));
+                half4 cG = content.eval(clamp(baseCoord, lo, hi));
+                half4 cB = content.eval(clamp(baseCoord + disp, lo, hi));
+                half3 rgb = half3(cR.r, cG.g, cB.b);
+
+                float2 light1 = normalize(float2(-0.35, -0.94));
+                float2 light2 = normalize(float2(0.35, 0.94));
+                float rimBand = 1.0 - smoothstep(0.0, max(bezel * 0.45, 2.0), edgeDist);
+                float spec1 = pow(max(dot(-n, light1), 0.0), 2.2) * rimBand;
+                float spec2 = pow(max(dot(-n, light2), 0.0), 3.0) * rimBand * 0.48;
+                float crisp = 1.0 - smoothstep(0.0, 2.2, edgeDist);
+                float normY = clamp((p.y + halfSize.y) / max(halfSize.y * 2.0, 1.0), 0.0, 1.0);
+                float sheen = pow(1.0 - normY, 2.5) * (isDark > 0.5 ? 0.14 : 0.22);
+
+                half h = half(spec1 * 0.46 + spec2 * 0.28 + crisp * (isDark > 0.5 ? 0.26 : 0.36) + sheen);
+                rgb = clamp(rgb + half3(h, h, h), half3(0.0, 0.0, 0.0), half3(1.0, 1.0, 1.0));
+                return half4(rgb * half(alpha), half(alpha));
+            }
+        """
+
+        private const val LENS_SHADER = """
+            uniform shader content;
+            uniform float2 center;
+            uniform float2 halfSize;
+            uniform float radius;
+            uniform float2 texSize;
+            uniform float refractPx;
+            uniform float dispersion;
+            uniform float magnify;
+            uniform float bezel;
+            uniform float isDark;
+            uniform float strength;
+
+            float sdRoundedBox(float2 p, float2 b, float r) {
+                float2 q = abs(p) - b + float2(r);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+            }
+
+            half4 main(float2 fragCoord) {
+                float2 p = fragCoord - center;
+                float d = sdRoundedBox(p, halfSize, radius);
+                if (d > 2.0) {
+                    return half4(0.0, 0.0, 0.0, 0.0);
+                }
+                float alpha = 1.0 - smoothstep(-1.0, 0.8, d);
+                float edgeDist = max(-d, 0.0);
+
+                float2 grad = float2(
+                    sdRoundedBox(p + float2(1.0, 0.0), halfSize, radius) - sdRoundedBox(p - float2(1.0, 0.0), halfSize, radius),
+                    sdRoundedBox(p + float2(0.0, 1.0), halfSize, radius) - sdRoundedBox(p - float2(0.0, 1.0), halfSize, radius)
+                );
+                float2 n = grad / max(length(grad), 0.0001);
+
+                float rim = 1.0 - smoothstep(0.0, max(bezel, 1.0), edgeDist);
+                float rimCurve = rim * rim;
+
+                float2 magOffset = -p * (magnify * strength);
+                float2 refractOffset = -n * (rimCurve * refractPx * strength);
+                float2 baseCoord = fragCoord + magOffset + refractOffset;
+
+                float2 disp = n * (rimCurve * dispersion * strength);
+                float2 lo = float2(1.0, 1.0);
+                float2 hi = max(texSize - float2(1.0, 1.0), lo);
+
+                half4 cR = content.eval(clamp(baseCoord - disp, lo, hi));
+                half4 cG = content.eval(clamp(baseCoord, lo, hi));
+                half4 cB = content.eval(clamp(baseCoord + disp, lo, hi));
+                half3 rgb = half3(cR.r, cG.g, cB.b);
+
+                float2 light1 = normalize(float2(-0.38, -0.92));
+                float2 light2 = normalize(float2(0.38, 0.92));
+                float rimBand = 1.0 - smoothstep(0.0, max(bezel * 0.48, 2.0), edgeDist);
+                float spec1 = pow(max(dot(-n, light1), 0.0), 2.0) * rimBand;
+                float spec2 = pow(max(dot(-n, light2), 0.0), 2.8) * rimBand * 0.58;
+                float crispEdge = 1.0 - smoothstep(0.0, 2.5, edgeDist);
+
+                float normY = clamp((p.y + halfSize.y) / max(halfSize.y * 2.0, 1.0), 0.0, 1.0);
+                float topSheen = pow(1.0 - normY, 2.1) * (isDark > 0.5 ? 0.16 : 0.24) * strength;
+
+                half3 tint = isDark > 0.5 ? half3(0.86, 0.94, 1.0) : half3(1.0, 1.0, 1.0);
+                float tintMix = (isDark > 0.5 ? 0.08 : 0.14) * (0.45 + 0.55 * strength);
+                rgb = mix(rgb, tint, half(tintMix));
+
+                half h = half(spec1 * 0.62 + spec2 * 0.36 + crispEdge * (isDark > 0.5 ? 0.38 : 0.48) + topSheen);
+                rgb = clamp(rgb + half3(h, h, h), half3(0.0, 0.0, 0.0), half3(1.0, 1.0, 1.0));
+                return half4(rgb * half(alpha), half(alpha));
+            }
+        """
+
+        fun createDockShader(): RuntimeShader = RuntimeShader(DOCK_SHADER)
+
+        fun createLensShader(): RuntimeShader = RuntimeShader(LENS_SHADER)
+
+        fun updateDockShader(
+            shader: Any,
+            content: BitmapShader,
+            rect: RectF,
+            radius: Float,
+            density: Float,
+            dark: Boolean,
+        ): Shader {
+            val rs = shader as RuntimeShader
+            rs.setInputShader("content", content)
+            rs.setFloatUniform("center", rect.centerX(), rect.centerY())
+            rs.setFloatUniform("halfSize", rect.width() * 0.5f, rect.height() * 0.5f)
+            rs.setFloatUniform("radius", min(radius, min(rect.width(), rect.height()) * 0.5f))
+            rs.setFloatUniform("texSize", rect.width(), rect.height())
+            rs.setFloatUniform("refractPx", 11f * density)
+            rs.setFloatUniform("dispersion", 2.2f * density)
+            rs.setFloatUniform("bezel", 18f * density)
+            rs.setFloatUniform("isDark", if (dark) 1f else 0f)
+            return rs
+        }
+
+        fun updateLensShader(
+            shader: Any,
+            content: BitmapShader,
+            cx: Float,
+            cy: Float,
+            halfW: Float,
+            halfH: Float,
+            radius: Float,
+            texW: Float,
+            texH: Float,
+            density: Float,
+            dark: Boolean,
+            strength: Float,
+        ): Shader {
+            val rs = shader as RuntimeShader
+            rs.setInputShader("content", content)
+            rs.setFloatUniform("center", cx, cy)
+            rs.setFloatUniform("halfSize", halfW, halfH)
+            rs.setFloatUniform("radius", min(radius, min(halfW, halfH)))
+            rs.setFloatUniform("texSize", texW, texH)
+            rs.setFloatUniform("refractPx", 18f * density)
+            rs.setFloatUniform("dispersion", 2.8f * density)
+            rs.setFloatUniform("magnify", 0.135f)
+            rs.setFloatUniform("bezel", 22f * density)
+            rs.setFloatUniform("isDark", if (dark) 1f else 0f)
+            rs.setFloatUniform("strength", strength)
+            return rs
+        }
+    }
+
+    private class LiquidGlassController(
+        private val rootView: FrameLayout,
+        private val container: ViewGroup,
+        private val bar: ViewGroup,
+        private val light: Boolean,
+        private val tintColor: Int,
+        private val indicatorColor: Int,
+    ) {
+        private val handler = Handler(Looper.getMainLooper())
+        private val touchSlop = ViewConfiguration.get(bar.context).scaledTouchSlop.toFloat()
+        private var tracking = false
+        private var dragging = false
+        private var dispatchingSynthetic = false
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var lastRawX = 0f
+        private var lastHoveredIdx = -1
+        private var cachedTabs: List<View> = emptyList()
+
+        val overlayView = LiquidLensView(
+            context = bar.context,
+            rootView = rootView,
+            container = container,
+            bar = bar,
+            light = light,
+            tintColor = tintColor,
+            indicatorColor = indicatorColor,
+        )
+
+        private val holdRunnable = Runnable {
+            if (tracking && !dragging) {
+                enterDragMode(lastRawX, lastCallback)
+            }
+        }
+
+        private var lastCallback: Window.Callback? = null
+
+        fun attach() {
+            if (overlayView.parent !== rootView) {
+                (overlayView.parent as? ViewGroup)?.removeView(overlayView)
+                rootView.addView(
+                    overlayView,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.START,
+                    ),
+                )
+            }
+            overlayView.bringToFront()
+            syncLayout()
+        }
+
+        fun detach() {
+            handler.removeCallbacks(holdRunnable)
+            overlayView.stopAnimations()
+            (overlayView.parent as? ViewGroup)?.removeView(overlayView)
+        }
+
+        fun syncLayout() {
+            bar.post {
+                if (!bar.isAttachedToWindow || bar.width <= 0 || bar.height <= 0) return@post
+                val tabs = findTabViews(bar)
+                cachedTabs = tabs
+                overlayView.syncBounds(tabs, findSelectedIndex(tabs))
+                overlayView.bringToFront()
+            }
+        }
+
+        fun onDispatchTouchEvent(ev: MotionEvent, original: Window.Callback): Boolean {
+            if (dispatchingSynthetic) return false
+            if (!bar.isAttachedToWindow || bar.visibility != View.VISIBLE || container.visibility != View.VISIBLE) {
+                return false
+            }
+
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    handler.removeCallbacks(holdRunnable)
+                    dragging = false
+                    tracking = isInsideBar(ev)
+                    if (tracking) {
+                        lastCallback = original
+                        downRawX = ev.rawX
+                        downRawY = ev.rawY
+                        lastRawX = ev.rawX
+                        cachedTabs = findTabViews(bar)
+                        if (cachedTabs.size >= 2) {
+                            overlayView.syncBounds(cachedTabs, findSelectedIndex(cachedTabs))
+                            handler.postDelayed(holdRunnable, 130L)
+                        } else {
+                            tracking = false
+                        }
+                    }
+                    return false
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    if (!tracking) return false
+                    lastRawX = ev.rawX
+                    val dx = ev.rawX - downRawX
+                    val dy = ev.rawY - downRawY
+                    if (!dragging) {
+                        if (abs(dy) > touchSlop * 1.4f && abs(dy) > abs(dx) * 1.3f) {
+                            handler.removeCallbacks(holdRunnable)
+                            tracking = false
+                            return false
+                        }
+                        if (abs(dx) > touchSlop * 0.55f && abs(dx) > abs(dy)) {
+                            handler.removeCallbacks(holdRunnable)
+                            enterDragMode(ev.rawX, original)
+                        }
+                    }
+                    if (dragging) {
+                        val hoverIdx = overlayView.onDragMove(ev.rawX)
+                        if (hoverIdx != lastHoveredIdx && hoverIdx in cachedTabs.indices) {
+                            lastHoveredIdx = hoverIdx
+                            bar.performHapticFeedback(
+                                HapticFeedbackConstants.CLOCK_TICK,
+                                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                            )
+                        }
+                        return true
+                    }
+                    return false
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(holdRunnable)
+                    if (!tracking) return false
+                    tracking = false
+                    lastCallback = null
+                    if (dragging) {
+                        dragging = false
+                        val targetIdx = overlayView.onDragEnd(ev.rawX)
+                        if (ev.actionMasked == MotionEvent.ACTION_UP && targetIdx in cachedTabs.indices) {
+                            val tab = cachedTabs[targetIdx]
+                            tab.performClick()
+                            bar.postDelayed({
+                                val tabs = findTabViews(bar)
+                                cachedTabs = tabs
+                                overlayView.syncToTabIndex(findSelectedIndex(tabs), animate = true)
+                            }, 90L)
+                        }
+                        return true
+                    }
+                    bar.postDelayed({
+                        val tabs = findTabViews(bar)
+                        cachedTabs = tabs
+                        overlayView.syncToTabIndex(findSelectedIndex(tabs), animate = true)
+                    }, 50L)
+                    return false
+                }
+            }
+            return false
+        }
+
+        private fun enterDragMode(rawX: Float, original: Window.Callback?) {
+            if (dragging || cachedTabs.size < 2) return
+            dragging = true
+            lastHoveredIdx = overlayView.onDragStart(rawX)
+            bar.performHapticFeedback(
+                HapticFeedbackConstants.LONG_PRESS,
+                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+            )
+            if (original != null) {
+                val now = SystemClock.uptimeMillis()
+                val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, rawX, downRawY, 0)
+                dispatchingSynthetic = true
+                try {
+                    original.dispatchTouchEvent(cancel)
+                } catch (_: Throwable) {
+                } finally {
+                    dispatchingSynthetic = false
+                    cancel.recycle()
+                }
+            }
+        }
+
+        private fun isInsideBar(e: MotionEvent): Boolean {
+            val loc = IntArray(2)
+            bar.getLocationOnScreen(loc)
+            val pad = bar.resources.displayMetrics.density * 6f
+            return e.rawX >= loc[0] - pad && e.rawX <= loc[0] + bar.width + pad &&
+                e.rawY >= loc[1] - pad && e.rawY <= loc[1] + bar.height + pad
+        }
+
+        private fun findTabViews(root: ViewGroup): List<View> {
+            val menuGroup = if (root.childCount == 1 && root.getChildAt(0) is ViewGroup) {
+                root.getChildAt(0) as ViewGroup
+            } else {
+                findHorizontalMenuGroup(root) ?: root
+            }
+            val list = mutableListOf<View>()
+            for (i in 0 until menuGroup.childCount) {
+                val c = menuGroup.getChildAt(i)
+                if (c.visibility == View.VISIBLE && c.width > 0) {
+                    list.add(c)
+                }
+            }
+            list.sortBy { it.left }
+            return list
+        }
+
+        private fun findHorizontalMenuGroup(group: ViewGroup): ViewGroup? {
+            var visibleCount = 0
+            for (i in 0 until group.childCount) {
+                val c = group.getChildAt(i)
+                if (c.visibility == View.VISIBLE && c.width > 0) visibleCount++
+            }
+            if (visibleCount in 2..6) {
+                val first = group.getChildAt(0)
+                val second = group.getChildAt(1)
+                if (abs(second.left - first.left) > abs(second.top - first.top)) {
+                    return group
+                }
+            }
+            for (i in 0 until group.childCount) {
+                val c = group.getChildAt(i) as? ViewGroup ?: continue
+                val found = findHorizontalMenuGroup(c)
+                if (found != null) return found
+            }
+            return null
+        }
+
+        private fun findSelectedIndex(tabs: List<View>): Int {
+            tabs.forEachIndexed { idx, v ->
+                if (v.isSelected || hasSelectedDescendant(v)) return idx
+            }
+            return 0
+        }
+
+        private fun hasSelectedDescendant(v: View): Boolean {
+            if (v is ViewGroup) {
+                for (i in 0 until v.childCount) {
+                    val c = v.getChildAt(i)
+                    if (c.isSelected || hasSelectedDescendant(c)) return true
+                }
+            }
+            return false
+        }
+    }
+
+    private class LiquidLensView(
+        context: Context,
+        private val rootView: FrameLayout,
+        private val container: ViewGroup,
+        private val bar: ViewGroup,
+        private val light: Boolean,
+        private val tintColor: Int,
+        private val indicatorColor: Int,
+    ) : View(context) {
+
+        private val density = context.resources.displayMetrics.density
+        private val padH = (22f * density).toInt()
+        private val padV = (24f * density).toInt()
+
+        private val barScreenLoc = IntArray(2)
+        private val rootScreenLoc = IntArray(2)
+        private val tabCenters = mutableListOf<Float>()
+        private val tabWidths = mutableListOf<Float>()
+        private var tabHeight = 0f
+        private var selectedIndex = 0
+        private var initialized = false
+
+        private var curX = 0f
+        private var velX = 0f
+        private var targetX = 0f
+
+        private var curW = 0f
+        private var velW = 0f
+        private var targetW = 0f
+
+        private var dragProgress = 0f
+        private var velDrag = 0f
+        private var targetDrag = 0f
+
+        private var stretch = 0f
+        private var velStretch = 0f
+
+        private var isDragging = false
+        private var animating = false
+        private var lastFrameNanos = 0L
+        private var lastCaptureMs = 0L
+
+        private var overlayLeftInRoot = 0f
+        private var overlayTopInRoot = 0f
+
+        private var snapshotBmp: Bitmap? = null
+        private var snapshotShader: BitmapShader? = null
+        private val shaderMatrix = Matrix()
+        private var agslShader: Any? = null
+
+        private val lensPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        private val restFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val restStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f * density
+        }
+        private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val drawRect = RectF()
+
+        private val frameRunner = Runnable { stepFrame() }
+
+        init {
+            isClickable = false
+            isFocusable = false
+            setWillNotDraw(false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                agslShader = runCatching { LiquidAgsl.createLensShader() }.getOrNull()
+            }
+        }
+
+        fun stopAnimations() {
+            animating = false
+            removeCallbacks(frameRunner)
+        }
+
+        fun syncBounds(tabs: List<View>, activeIdx: Int) {
+            if (bar.width <= 0 || bar.height <= 0) return
+            bar.getLocationInWindow(barScreenLoc)
+            rootView.getLocationInWindow(rootScreenLoc)
+
+            val barLeftInRoot = (barScreenLoc[0] - rootScreenLoc[0]).toFloat()
+            val barTopInRoot = (barScreenLoc[1] - rootScreenLoc[1]).toFloat()
+            overlayLeftInRoot = barLeftInRoot - padH
+            overlayTopInRoot = barTopInRoot - padV
+
+            val desiredW = bar.width + padH * 2
+            val desiredH = bar.height + padV * 2
+            val lp = layoutParams as? FrameLayout.LayoutParams
+            if (lp != null && (lp.width != desiredW || lp.height != desiredH)) {
+                lp.width = desiredW
+                lp.height = desiredH
+                layoutParams = lp
+            }
+            x = overlayLeftInRoot
+            y = overlayTopInRoot
+
+            tabCenters.clear()
+            tabWidths.clear()
+            val tabLoc = IntArray(2)
+            for (t in tabs) {
+                t.getLocationInWindow(tabLoc)
+                val cx = (tabLoc[0] - barScreenLoc[0]) + t.width * 0.5f + padH
+                tabCenters.add(cx)
+                tabWidths.add(max(t.width * 0.86f, 56f * density))
+            }
+            tabHeight = max(bar.height - 10f * density, 44f * density)
+
+            val clampedIdx = activeIdx.coerceIn(0, (tabCenters.size - 1).coerceAtLeast(0))
+            selectedIndex = clampedIdx
+            if (tabCenters.isNotEmpty()) {
+                if (!initialized) {
+                    initialized = true
+                    curX = tabCenters[clampedIdx]
+                    targetX = curX
+                    curW = tabWidths[clampedIdx]
+                    targetW = curW
+                } else if (!isDragging) {
+                    targetX = tabCenters[clampedIdx]
+                    targetW = tabWidths[clampedIdx]
+                    startPhysics()
+                }
+            }
+            invalidate()
+        }
+
+        fun syncToTabIndex(index: Int, animate: Boolean) {
+            if (tabCenters.isEmpty()) return
+            val clamped = index.coerceIn(0, tabCenters.lastIndex)
+            selectedIndex = clamped
+            targetX = tabCenters[clamped]
+            targetW = tabWidths[clamped]
+            if (!animate) {
+                curX = targetX
+                curW = targetW
+                velX = 0f
+                velW = 0f
+                invalidate()
+            } else {
+                startPhysics()
+            }
+        }
+
+        private fun rawXToLocal(rawX: Float): Float {
+            bar.getLocationOnScreen(barScreenLoc)
+            val localInBar = rawX - barScreenLoc[0]
+            val minX = if (tabCenters.isNotEmpty()) tabCenters.first() else padH + 36f * density
+            val maxX = if (tabCenters.isNotEmpty()) tabCenters.last() else padH + bar.width - 36f * density
+            val desired = localInBar + padH
+            return when {
+                desired < minX -> minX - (minX - desired) * 0.25f
+                desired > maxX -> maxX + (desired - maxX) * 0.25f
+                else -> desired
+            }
+        }
+
+        private fun nearestTabIndex(localX: Float): Int {
+            if (tabCenters.isEmpty()) return 0
+            var best = 0
+            var bestDist = Float.MAX_VALUE
+            for (i in tabCenters.indices) {
+                val d = abs(tabCenters[i] - localX)
+                if (d < bestDist) {
+                    bestDist = d
+                    best = i
+                }
+            }
+            return best
+        }
+
+        fun onDragStart(rawX: Float): Int {
+            isDragging = true
+            targetDrag = 1f
+            targetX = rawXToLocal(rawX)
+            val idx = nearestTabIndex(targetX)
+            if (idx in tabWidths.indices) targetW = tabWidths[idx]
+            captureSnapshot()
+            startPhysics()
+            return idx
+        }
+
+        fun onDragMove(rawX: Float): Int {
+            targetX = rawXToLocal(rawX)
+            val idx = nearestTabIndex(targetX)
+            if (idx in tabWidths.indices) targetW = tabWidths[idx]
+            val now = SystemClock.uptimeMillis()
+            if (now - lastCaptureMs > 95L) {
+                captureSnapshot()
+            }
+            startPhysics()
+            return idx
+        }
+
+        fun onDragEnd(rawX: Float): Int {
+            isDragging = false
+            targetDrag = 0f
+            val projected = rawXToLocal(rawX) + velX * 0.055f
+            val idx = nearestTabIndex(projected)
+            selectedIndex = idx
+            if (idx in tabCenters.indices) {
+                targetX = tabCenters[idx]
+                targetW = tabWidths[idx]
+            }
+            startPhysics()
+            return idx
+        }
+
+        private fun startPhysics() {
+            if (animating) return
+            animating = true
+            lastFrameNanos = System.nanoTime()
+            postOnAnimation(frameRunner)
+        }
+
+        private fun stepFrame() {
+            if (!animating || !isAttachedToWindow) {
+                animating = false
+                return
+            }
+            val now = System.nanoTime()
+            val dt = ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0.004f, 0.032f)
+            lastFrameNanos = now
+
+            val xStiff = if (isDragging) 520f else 310f
+            val xDamp = if (isDragging) 34f else 21f
+            val ax = (targetX - curX) * xStiff - velX * xDamp
+            velX += ax * dt
+            curX += velX * dt
+
+            val aw = (targetW - curW) * 340f - velW * 25f
+            velW += aw * dt
+            curW += velW * dt
+
+            val ad = (targetDrag - dragProgress) * 380f - velDrag * 24f
+            velDrag += ad * dt
+            dragProgress = (dragProgress + velDrag * dt).coerceIn(0f, 1.15f)
+
+            val speedNorm = (abs(velX) / (density * 1500f)).coerceIn(0f, 1f)
+            val targetStretch = speedNorm * 0.16f * dragProgress.coerceIn(0f, 1f)
+            val asq = (targetStretch - stretch) * 260f - velStretch * 20f
+            velStretch += asq * dt
+            stretch = (stretch + velStretch * dt).coerceIn(-0.04f, 0.18f)
+
+            invalidate()
+
+            val settled = !isDragging &&
+                abs(targetX - curX) < 0.35f && abs(velX) < 1.5f &&
+                abs(targetW - curW) < 0.35f && abs(velW) < 1.5f &&
+                abs(targetDrag - dragProgress) < 0.005f && abs(velDrag) < 0.04f &&
+                abs(stretch) < 0.004f
+
+            if (settled) {
+                curX = targetX
+                curW = targetW
+                dragProgress = targetDrag
+                stretch = 0f
+                velX = 0f
+                velW = 0f
+                velDrag = 0f
+                velStretch = 0f
+                animating = false
+                invalidate()
+            } else {
+                postOnAnimation(frameRunner)
+            }
+        }
+
+        private fun captureSnapshot() {
+            try {
+                val w = width
+                val h = height
+                if (w <= 0 || h <= 0 || !isAttachedToWindow) return
+                lastCaptureMs = SystemClock.uptimeMillis()
+                val scale = 2
+                val sw = (w / scale).coerceAtLeast(4)
+                val sh = (h / scale).coerceAtLeast(4)
+                val bmp = snapshotBmp?.takeIf { it.width == sw && it.height == sh }
+                    ?: Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888).also { snapshotBmp = it }
+                val c = Canvas(bmp)
+                c.drawColor(tintColor)
+                c.save()
+                c.scale(1f / scale, 1f / scale)
+                c.translate(-overlayLeftInRoot, -overlayTopInRoot)
+                for (i in 0 until rootView.childCount) {
+                    val child = rootView.getChildAt(i)
+                    if (child === this || child === container || child.visibility != View.VISIBLE) continue
+                    c.save()
+                    c.translate(child.left + child.translationX, child.top + child.translationY)
+                    try {
+                        child.draw(c)
+                    } catch (_: Throwable) {
+                    }
+                    c.restore()
+                }
+                if (container.visibility == View.VISIBLE) {
+                    c.save()
+                    c.translate(container.left + container.translationX, container.top + container.translationY)
+                    try {
+                        container.draw(c)
+                    } catch (_: Throwable) {
+                    }
+                    c.restore()
+                }
+                c.restore()
+                snapshotShader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            } catch (_: Throwable) {
+            }
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (!initialized || width <= 0 || height <= 0 || curW <= 0f) return
+
+            val p = dragProgress.coerceIn(0f, 1.15f)
+            val cy = height * 0.5f
+            val baseW = curW
+            val baseH = tabHeight
+
+            val w = baseW * (1f + 0.16f * p + stretch)
+            val h = baseH * (1f + 0.24f * p - stretch * 0.5f)
+            val halfW = w * 0.5f
+            val halfH = h * 0.5f
+            val radius = halfH
+
+            drawRect.set(curX - halfW, cy - halfH, curX + halfW, cy + halfH)
+
+            if (p > 0.02f) {
+                shadowPaint.color = Color.argb((54 * p.coerceAtMost(1f)).toInt(), 0, 0, 0)
+                shadowPaint.setShadowLayer(14f * density * p, 0f, 4f * density * p, Color.argb(90, 0, 0, 0))
+                canvas.drawRoundRect(drawRect, radius, radius, shadowPaint)
+            }
+
+            if (p > 0.03f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val bmp = snapshotBmp
+                val bShader = snapshotShader
+                val rs = agslShader
+                if (bmp != null && bShader != null && rs != null) {
+                    shaderMatrix.reset()
+                    shaderMatrix.setScale(width.toFloat() / bmp.width, height.toFloat() / bmp.height)
+                    bShader.setLocalMatrix(shaderMatrix)
+                    lensPaint.shader = LiquidAgsl.updateLensShader(
+                        shader = rs,
+                        content = bShader,
+                        cx = curX,
+                        cy = cy,
+                        halfW = halfW,
+                        halfH = halfH,
+                        radius = radius,
+                        texW = width.toFloat(),
+                        texH = height.toFloat(),
+                        density = density,
+                        dark = !light,
+                        strength = p.coerceIn(0f, 1f),
+                    )
+                    lensPaint.alpha = (255 * p.coerceIn(0f, 1f)).toInt()
+                    canvas.drawRoundRect(drawRect, radius, radius, lensPaint)
+                }
+            }
+
+            val restFactor = (1f - p * 0.72f).coerceIn(0f, 1f)
+            if (restFactor > 0.01f) {
+                val baseFill = if (indicatorColor != 0) {
+                    val alpha = (Color.alpha(indicatorColor).coerceAtMost(96) * restFactor).toInt()
+                    (indicatorColor and 0x00FFFFFF) or (alpha shl 24)
+                } else if (light) {
+                    Color.argb((34 * restFactor).toInt(), 0, 0, 0)
+                } else {
+                    Color.argb((42 * restFactor).toInt(), 255, 255, 255)
+                }
+                restFillPaint.color = baseFill
+                canvas.drawRoundRect(drawRect, radius, radius, restFillPaint)
+
+                restStrokePaint.shader = LinearGradient(
+                    drawRect.left, drawRect.top, drawRect.left, drawRect.bottom,
+                    intArrayOf(
+                        Color.argb(((if (light) 130 else 155) * restFactor).toInt(), 255, 255, 255),
+                        Color.argb(((if (light) 28 else 36) * restFactor).toInt(), 255, 255, 255),
+                    ),
+                    null,
+                    Shader.TileMode.CLAMP,
+                )
+                val inset = restStrokePaint.strokeWidth * 0.5f
+                canvas.drawRoundRect(
+                    drawRect.left + inset, drawRect.top + inset,
+                    drawRect.right - inset, drawRect.bottom - inset,
+                    radius, radius, restStrokePaint,
+                )
             }
         }
     }
@@ -679,12 +1590,14 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private val opacityPercent: Int,
         private val light: Boolean,
         private val edgeWidth: Float,
+        private val liquidMode: Boolean = false,
     ) : Drawable() {
 
+        private val density = bar.resources.displayMetrics.density
         private val rect = RectF()
         private val matrix = Matrix()
         private val backdropPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(1.45f) })
+            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(if (liquidMode) 1.6f else 1.45f) })
         }
         private val tintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val sheenPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -692,6 +1605,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             style = Paint.Style.STROKE
             strokeWidth = edgeWidth
         }
+        private var dockShader: Any? = null
         private var work: Bitmap? = null
         private var shown: Bitmap? = null
         private var shader: BitmapShader? = null
@@ -700,6 +1614,12 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private var pending = false
         private var observer: ViewTreeObserver? = null
         private val scrollListener = ViewTreeObserver.OnScrollChangedListener { request() }
+
+        init {
+            if (liquidMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                dockShader = runCatching { LiquidAgsl.createDockShader() }.getOrNull()
+            }
+        }
 
         fun attach() {
             detach()
@@ -716,7 +1636,8 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
 
         private fun request() {
             val now = SystemClock.uptimeMillis()
-            if (now - lastRun >= 80L) {
+            val interval = if (liquidMode) 55L else 80L
+            if (now - lastRun >= interval) {
                 lastRun = now
                 capture()
             } else if (!pending) {
@@ -725,7 +1646,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                     pending = false
                     lastRun = SystemClock.uptimeMillis()
                     capture()
-                }, 80L)
+                }, interval)
             }
         }
 
@@ -735,7 +1656,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 val h = bar.height
                 if (w <= 0 || h <= 0 || !bar.isAttachedToWindow) return
                 val root = container.parent as? ViewGroup ?: return
-                val scale = 8
+                val scale = if (liquidMode) 4 else 8
                 val sw = (w / scale).coerceAtLeast(2)
                 val sh = (h / scale).coerceAtLeast(2)
                 val bmp = work?.takeIf { it.width == sw && it.height == sh }
@@ -753,7 +1674,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 )
                 for (i in 0 until root.childCount) {
                     val child = root.getChildAt(i)
-                    if (child === container || child.visibility != View.VISIBLE) continue
+                    if (child === container || child is LiquidLensView || child.visibility != View.VISIBLE) continue
                     canvas.save()
                     canvas.translate(
                         child.left + child.translationX,
@@ -769,15 +1690,17 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 bmp.getPixels(pixels, 0, sw, 0, 0, sw, sh)
                 var hash = 1
                 var k = 0
+                val step = if (liquidMode) 9 else 5
                 while (k < pixels.size) {
                     hash = 31 * hash + pixels[k]
-                    k += 5
+                    k += step
                 }
                 if (hash == lastHash && shown != null) return
                 lastHash = hash
-                var a = pixels
-                var b = IntArray(pixels.size)
-                repeat(3) {
+                val a = pixels
+                val b = IntArray(pixels.size)
+                val passes = if (liquidMode) 2 else 3
+                repeat(passes) {
                     boxPass(a, b, sw, sh, 2, true)
                     boxPass(b, a, sw, sh, 2, false)
                 }
@@ -819,19 +1742,22 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             }
         }
 
-        override fun onBoundsChange(bounds: android.graphics.Rect) {
+        override fun onBoundsChange(bounds: Rect) {
             super.onBoundsChange(bounds)
             rect.set(bounds)
             sheenPaint.shader = LinearGradient(
                 0f, rect.top, 0f, rect.bottom,
-                intArrayOf(Color.argb(70, 255, 255, 255), Color.argb(0, 255, 255, 255)),
+                intArrayOf(
+                    Color.argb(if (liquidMode) 82 else 70, 255, 255, 255),
+                    Color.argb(0, 255, 255, 255),
+                ),
                 floatArrayOf(0f, 0.55f), Shader.TileMode.CLAMP,
             )
             edgePaint.shader = LinearGradient(
                 0f, rect.top, 0f, rect.bottom,
                 intArrayOf(
-                    Color.argb(if (light) 120 else 150, 255, 255, 255),
-                    Color.argb(if (light) 30 else 40, 255, 255, 255),
+                    Color.argb(if (light) 135 else 170, 255, 255, 255),
+                    Color.argb(if (light) 35 else 52, 255, 255, 255),
                 ),
                 null, Shader.TileMode.CLAMP,
             )
@@ -846,12 +1772,25 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 matrix.setScale(rect.width() / bmp.width, rect.height() / bmp.height)
                 matrix.postTranslate(rect.left, rect.top)
                 sh.setLocalMatrix(matrix)
-                backdropPaint.shader = sh
+                if (liquidMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && dockShader != null) {
+                    backdropPaint.shader = LiquidAgsl.updateDockShader(
+                        shader = dockShader!!,
+                        content = sh,
+                        rect = rect,
+                        radius = radius,
+                        density = density,
+                        dark = !light,
+                    )
+                } else {
+                    backdropPaint.shader = sh
+                }
                 canvas.drawRoundRect(rect, radius, radius, backdropPaint)
             }
             tintPaint.color = (tint and 0x00FFFFFF) or ((opacityPercent.coerceIn(0, 100) * 255 / 100) shl 24)
             canvas.drawRoundRect(rect, radius, radius, tintPaint)
-            canvas.drawRoundRect(rect, radius, radius, sheenPaint)
+            if (!liquidMode || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                canvas.drawRoundRect(rect, radius, radius, sheenPaint)
+            }
             val inset = edgeWidth / 2f
             canvas.drawRoundRect(
                 rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset,

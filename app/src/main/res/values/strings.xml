@@ -672,4 +672,6 @@
     <string name="wpme_sync_bubble_sum">Automatically match the floating tools bubble to your Monet palette</string>
     <string name="wpme_restart_hint">Restart WhatsApp after changing Expressive settings to apply everything cleanly.</string>
     <string name="wpme_reset">Reset to defaults</string>
+    <string name="wpfb_preset_liquid">Liquid Glass</string>
+    <string name="wpfb_preset_liquid_sum">iOS 26 refracting liquid glass with draggable magnifying pill</string>
 </resources>

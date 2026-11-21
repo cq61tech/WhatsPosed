@@ -366,6 +366,11 @@ fun FloatingBarScreen(prefs: FloatingBarPrefs, onBack: () -> Unit) {
                 stringResource(R.string.wpfb_preset_glass),
                 stringResource(R.string.wpfb_preset_glass_sum),
             ) { prefs.applyPreset("glass") }
+            PresetRow(
+                prefs.preset.value == "liquid",
+                stringResource(R.string.wpfb_preset_liquid),
+                stringResource(R.string.wpfb_preset_liquid_sum),
+            ) { prefs.applyPreset("liquid") }
         }
 
         SectionCard(stringResource(R.string.wpfb_geometry)) {

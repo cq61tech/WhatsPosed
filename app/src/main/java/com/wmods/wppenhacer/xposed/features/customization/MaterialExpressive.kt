@@ -67,6 +67,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
 
     private val idNameCache = ConcurrentHashMap<Int, String>()
     private val paddedViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
+    private val rowBasePadding = WeakHashMap<View, IntArray>()
     private val styledViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val pendingContainers = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
     private val observedLists = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
@@ -858,18 +859,21 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         val insetV = dp(ctx, (config.cardGapDp / 2f).coerceAtLeast(1f))
         val drawable: Drawable = InsetDrawable(ripple, insetH, insetV, insetH, insetV)
 
-        val pStart = view.paddingStart
-        val pTop = view.paddingTop
-        val pEnd = view.paddingEnd
-        val pBottom = view.paddingBottom
+        val base = rowBasePadding.getOrPut(view) {
+            intArrayOf(view.paddingStart, view.paddingTop, view.paddingEnd, view.paddingBottom)
+        }
         view.background = drawable
 
-        if (paddedViews.add(view)) {
-            val extraH = dp(ctx, 14f)
-            val extraV = dp(ctx, 3f)
-            view.setPaddingRelative(pStart + extraH, pTop + extraV, pEnd + extraH, pBottom + extraV)
-        } else {
-            view.setPaddingRelative(pStart, pTop, pEnd, pBottom)
+        val addStart = if (base[0] < dp(ctx, 10f)) dp(ctx, 14f) else dp(ctx, 6f)
+        val addEnd = if (base[2] < dp(ctx, 10f)) dp(ctx, 10f) else dp(ctx, 4f)
+        val targetStart = base[0] + insetH + addStart
+        val targetTop = base[1] + insetV + dp(ctx, 2f)
+        val targetEnd = base[2] + insetH + addEnd
+        val targetBottom = base[3] + insetV + dp(ctx, 2f)
+        if (view.paddingStart != targetStart || view.paddingTop != targetTop ||
+            view.paddingEnd != targetEnd || view.paddingBottom != targetBottom
+        ) {
+            view.setPaddingRelative(targetStart, targetTop, targetEnd, targetBottom)
         }
         styledViews.add(view)
     }
