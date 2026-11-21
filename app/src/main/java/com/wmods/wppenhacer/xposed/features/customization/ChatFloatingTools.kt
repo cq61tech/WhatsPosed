@@ -2022,6 +2022,18 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             multiline = true
         )
         spoilerBox.addView(hiddenInput)
+        spoilerBox.addView(
+            TextView(activity).apply {
+                text = if (tr) {
+                    "WhatsPosed'deki \"Devamını oku seçeneğini kaldır\" seçeneği aktif ise işe yaramayabilir."
+                } else {
+                    "May not work on your side if \"Remove Read More\" is enabled in WhatsPosed."
+                }
+                setTextColor(palette.textSecondary)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+                setPadding(dp(activity, 4f), dp(activity, 6f), dp(activity, 4f), 0)
+            }
+        )
 
         val blankBox = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
