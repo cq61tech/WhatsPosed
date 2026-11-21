@@ -10,6 +10,7 @@ import com.wmods.wppenhacer.xposed.features.customization.DefaultEmoji
 import com.wmods.wppenhacer.xposed.features.customization.FilterGroups
 import com.wmods.wppenhacer.xposed.features.customization.FloatingBottomBar
 import com.wmods.wppenhacer.xposed.features.customization.ChatFloatingTools
+import com.wmods.wppenhacer.xposed.features.customization.LiquidGlassChat
 import com.wmods.wppenhacer.xposed.features.customization.MaterialExpressive
 import com.wmods.wppenhacer.xposed.features.customization.NativeFloatingNavigation
 import com.wmods.wppenhacer.xposed.features.customization.HideSeenView
@@ -40,6 +41,7 @@ import com.wmods.wppenhacer.xposed.features.media.DownloadProfile
 import com.wmods.wppenhacer.xposed.features.media.DownloadViewOnce
 import com.wmods.wppenhacer.xposed.features.media.MediaPreview
 import com.wmods.wppenhacer.xposed.features.media.MediaQuality
+import com.wmods.wppenhacer.xposed.features.media.ChatVideoPlayerPro
 import com.wmods.wppenhacer.xposed.features.media.StatusDownload
 import com.wmods.wppenhacer.xposed.features.others.ActivityController
 import com.wmods.wppenhacer.xposed.features.others.AudioTranscript
@@ -92,6 +94,7 @@ internal object FeatureRegistry {
         CustomThemeV2::class.java,
         FloatingBottomBar::class.java,
         ChatFloatingTools::class.java,
+        LiquidGlassChat::class.java,
         MaterialExpressive::class.java,
         NativeFloatingNavigation::class.java,
         ChatLimit::class.java,
@@ -107,6 +110,7 @@ internal object FeatureRegistry {
         HideTabs::class.java,
         IGStatus::class.java,
         MediaQuality::class.java,
+        ChatVideoPlayerPro::class.java,
         NewChat::class.java,
         Others::class.java,
         PinnedLimit::class.java,
