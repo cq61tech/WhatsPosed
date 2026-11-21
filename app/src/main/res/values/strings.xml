@@ -674,4 +674,6 @@
     <string name="wpme_reset">Reset to defaults</string>
     <string name="wpfb_preset_liquid">Liquid Glass</string>
     <string name="wpfb_preset_liquid_sum">iOS 26 refracting liquid glass with draggable magnifying pill</string>
+    <string name="status_playback_controls">Status playback controls</string>
+    <string name="status_playback_controls_sum">Add floating speed, ±5s seek, pause, and clean fullscreen toggle on statuses</string>
 </resources>

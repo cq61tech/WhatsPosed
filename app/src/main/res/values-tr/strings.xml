@@ -600,4 +600,6 @@
     <string name="wpme_reset">Varsayılana sıfırla</string>
     <string name="wpfb_preset_liquid">Liquid Glass</string>
     <string name="wpfb_preset_liquid_sum">Sürüklenebilir sıvı cam mercekli ve ışığı kıran iOS 26 stili</string>
+    <string name="status_playback_controls">Durum oynatma kontrolleri</string>
+    <string name="status_playback_controls_sum">Durumlarda hız, ±5sn sarma, duraklatma ve temiz tam ekran izleme hapı ekler</string>
 </resources>

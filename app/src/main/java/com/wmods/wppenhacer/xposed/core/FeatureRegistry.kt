@@ -48,6 +48,7 @@ import com.wmods.wppenhacer.xposed.features.others.Channels
 import com.wmods.wppenhacer.xposed.features.others.ChatFilters
 import com.wmods.wppenhacer.xposed.features.others.CopySelectionMessage
 import com.wmods.wppenhacer.xposed.features.others.CopyStatus
+import com.wmods.wppenhacer.xposed.features.others.StatusPlaybackControls
 import com.wmods.wppenhacer.xposed.features.others.DebugFeature
 import com.wmods.wppenhacer.xposed.features.others.GoogleTranslate
 import com.wmods.wppenhacer.xposed.features.others.GroupAdmin
@@ -127,6 +128,7 @@ internal object FeatureRegistry {
         GroupAdmin::class.java,
         Stickers::class.java,
         CopyStatus::class.java,
+        StatusPlaybackControls::class.java,
         CopySelectionMessage::class.java,
         TextStatusComposer::class.java,
         ToastViewer::class.java,

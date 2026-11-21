@@ -26,7 +26,9 @@ import android.os.Handler
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import android.os.Looper
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -57,7 +59,7 @@ import kotlin.math.min
 class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
     Feature(loader, preferences) {
 
-    private enum class IconKind { PLUS, CLOSE, BOMBER, REPEATER, SNIPPETS, TIMER, TRASH }
+    private enum class IconKind { PLUS, CLOSE, BOMBER, REPEATER, SNIPPETS, TIMER, TRASH, FONTS, SPOILER }
 
     private enum class TaskKind { NONE, BOMBER, TIMER }
 
@@ -270,7 +272,9 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         ToolEntry("bomber", "Bomber", "Bomber", IconKind.BOMBER) { showBomberDialog(it) },
         ToolEntry("repeater", "Repeater", "Çoğaltıcı", IconKind.REPEATER) { showRepeaterDialog(it) },
         ToolEntry("snippets", "Snippets", "Şablonlar", IconKind.SNIPPETS) { showSnippetsDialog(it) },
-        ToolEntry("timer", "Timer", "Zamanlayıcı", IconKind.TIMER) { showTimerDialog(it) }
+        ToolEntry("timer", "Timer", "Zamanlayıcı", IconKind.TIMER) { showTimerDialog(it) },
+        ToolEntry("fonts", "Text Styles", "Yazı Stili", IconKind.FONTS) { showFontsDialog(it) },
+        ToolEntry("spoiler", "Spoiler", "Gizli/Boş", IconKind.SPOILER) { showSpoilerDialog(it) }
     )
 
     private fun dp(activity: Activity, value: Float): Int =
@@ -1745,6 +1749,383 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         presentExpressiveDialog(activity, dialog, card)
     }
 
+
+    private fun showFontsDialog(activity: Activity) {
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.FONTS,
+            if (tr) "Yazı Stili" else "Text Styles"
+        )
+
+        val currentDraft = getChatEntry(activity)?.text?.toString()?.trim().orEmpty()
+        card.addView(makeFieldLabel(activity, if (tr) "Metin" else "Text", palette))
+        val textInput = makeExpressiveInput(
+            activity,
+            if (tr) "Stil uygulanacak metin..." else "Text to stylize...",
+            palette,
+            initial = currentDraft,
+            multiline = true
+        )
+        card.addView(
+            textInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 12f) }
+        )
+
+        val styles = listOf(
+            (if (tr) "Kalın (Unicode)" else "Bold (Unicode)") to { s: String -> stylizeUnicode(s, 0x1D5D4, 0x1D5EE, 0x1D7EC) },
+            (if (tr) "İtalik (Unicode)" else "Italic (Unicode)") to { s: String -> stylizeUnicode(s, 0x1D608, 0x1D622, -1) },
+            (if (tr) "Kalın İtalik" else "Bold Italic") to { s: String -> stylizeUnicode(s, 0x1D63C, 0x1D656, 0x1D7EC) },
+            "Monospace" to { s: String -> stylizeUnicode(s, 0x1D670, 0x1D68A, 0x1D7F6) },
+            "Small Caps" to { s: String -> toSmallCaps(s) },
+            (if (tr) "Aralıklı" else "Spaced") to { s: String -> s.toCharArray().joinToString(" ") },
+            (if (tr) "Baloncuk" else "Bubbles") to { s: String -> toCircled(s) },
+            (if (tr) "Ters Çevir" else "Upside Down") to { s: String -> toUpsideDown(s) },
+            (if (tr) "WA Kalın Alıntı" else "WA Bold Quote") to { s: String -> "> *${s.replace("\n", "*\n> *")}*" },
+            (if (tr) "WA Kod Bloğu" else "WA Code Block") to { s: String -> "```$s```" },
+            (if (tr) "Üstü Çizili" else "Strikethrough") to { s: String -> "~$s~" }
+        )
+
+        var selectedIdx = 0
+        val previewViews = mutableListOf<TextView>()
+        val rowCards = mutableListOf<LinearLayout>()
+
+        val listHolder = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        fun updateSelectionUi() {
+            val sample = textInput.text?.toString()?.takeIf { it.isNotEmpty() }
+                ?: if (tr) "Merhaba WhatsApp" else "Hello WhatsApp"
+            rowCards.forEachIndexed { idx, row ->
+                val isSel = idx == selectedIdx
+                row.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpf(activity, 16f)
+                    setColor(if (isSel) palette.tonalBg else palette.fieldBg)
+                    setStroke(
+                        dp(activity, 1f).coerceAtLeast(1),
+                        if (isSel) palette.tonalIcon else palette.fieldStroke
+                    )
+                }
+                previewViews[idx].text = styles[idx].second(sample)
+                previewViews[idx].setTextColor(if (isSel) palette.tonalIcon else palette.textPrimary)
+            }
+        }
+
+        styles.forEachIndexed { idx, (label, _) ->
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                val ph = dp(activity, 12f)
+                val pv = dp(activity, 9f)
+                setPadding(ph, pv, ph, pv)
+                applySquishTouch(this)
+                setOnClickListener {
+                    selectedIdx = idx
+                    updateSelectionUi()
+                }
+            }
+            val titleTv = TextView(activity).apply {
+                text = label
+                setTextColor(palette.textSecondary)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            }
+            val prevTv = TextView(activity).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                maxLines = 2
+            }
+            row.addView(titleTv)
+            row.addView(prevTv)
+            rowCards.add(row)
+            previewViews.add(prevTv)
+            listHolder.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(activity, 6f) }
+            )
+        }
+
+        updateSelectionUi()
+
+        textInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateSelectionUi()
+            }
+        })
+
+        val scroll = MaxHeightScrollView(activity, dp(activity, 230f)).apply {
+            addView(listHolder)
+        }
+        card.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 14f) }
+        )
+
+        val btnRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        btnRow.addView(
+            makePillButton(activity, if (tr) "Kutuya Yaz" else "Insert", palette.tonalBg, palette.tonalIcon, 16f) {
+                val raw = textInput.text?.toString().orEmpty()
+                if (raw.isBlank()) {
+                    Toast.makeText(activity, if (tr) "Önce metin yaz" else "Enter text first", Toast.LENGTH_SHORT).show()
+                    return@makePillButton
+                }
+                val styled = styles[selectedIdx].second(raw)
+                val entry = getChatEntry(activity)
+                if (entry != null) {
+                    entry.setText(styled)
+                    entry.setSelection(styled.length)
+                } else {
+                    insertToChat(activity, styled)
+                }
+                dialog.dismiss()
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(activity, 8f) }
+        )
+        btnRow.addView(
+            makePillButton(activity, if (tr) "Gönder" else "Send", palette.accent, Color.WHITE, 18f) {
+                val raw = textInput.text?.toString().orEmpty()
+                if (raw.isBlank()) {
+                    Toast.makeText(activity, if (tr) "Önce metin yaz" else "Enter text first", Toast.LENGTH_SHORT).show()
+                    return@makePillButton
+                }
+                val styled = styles[selectedIdx].second(raw)
+                dialog.dismiss()
+                sendOnceToChat(activity, styled)
+            }
+        )
+        card.addView(btnRow)
+        presentExpressiveDialog(activity, dialog, card, 336f)
+    }
+
+    private fun stylizeUnicode(input: String, upperBase: Int, lowerBase: Int, digitBase: Int): String {
+        val sb = StringBuilder(input.length * 2)
+        for (ch in input) {
+            when {
+                ch in 'A'..'Z' -> sb.appendCodePoint(upperBase + (ch - 'A'))
+                ch in 'a'..'z' -> sb.appendCodePoint(lowerBase + (ch - 'a'))
+                digitBase >= 0 && ch in '0'..'9' -> sb.appendCodePoint(digitBase + (ch - '0'))
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun toSmallCaps(input: String): String {
+        val map = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀsᴛᴜᴠᴡxʏᴢ"
+        val sb = StringBuilder(input.length)
+        for (ch in input) {
+            if (ch in 'a'..'z') sb.append(map[ch - 'a']) else sb.append(ch)
+        }
+        return sb.toString()
+    }
+
+    private fun toCircled(input: String): String {
+        val sb = StringBuilder(input.length)
+        for (ch in input) {
+            when {
+                ch in 'A'..'Z' -> sb.append((0x24B6 + (ch - 'A')).toChar())
+                ch in 'a'..'z' -> sb.append((0x24D0 + (ch - 'a')).toChar())
+                ch in '1'..'9' -> sb.append((0x2460 + (ch - '1')).toChar())
+                ch == '0' -> sb.append('\u24EA')
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun toUpsideDown(input: String): String {
+        val normal = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789?!.,'\"()[]{}"
+        val flipped = "ɐqɔpǝɟƃɥᴉɾʞlɯuodbɹsʇnʌʍxʎz∀qƆpƎℲפHIſʞ˥WNOԀQɹS┴∩ΛMX⅄Z0ƖᄅƐㄣϛ9ㄥ86¿¡˙,'„)(][}{"
+        val sb = StringBuilder(input.length)
+        for (i in input.length - 1 downTo 0) {
+            val c = input[i]
+            val idx = normal.indexOf(c)
+            sb.append(if (idx >= 0) flipped[idx] else c)
+        }
+        return sb.toString()
+    }
+
+    private fun showSpoilerDialog(activity: Activity) {
+        val tr = isTurkish(activity)
+        val palette = paletteFor(activity)
+        val (dialog, card) = createExpressiveDialog(
+            activity,
+            palette,
+            IconKind.SPOILER,
+            if (tr) "Gizli & Boş Mesaj" else "Spoiler & Blank"
+        )
+
+        var mode = 0
+        var blankLines = 1
+
+        val modeRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val spoilerChip = makeSelectableChip(activity, if (tr) "Devamını Oku" else "Read More", true, palette)
+        val blankChip = makeSelectableChip(activity, if (tr) "Boş Mesaj" else "Blank Msg", false, palette)
+        modeRow.addView(
+            spoilerChip,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(activity, 8f)
+            }
+        )
+        modeRow.addView(
+            blankChip,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        card.addView(
+            modeRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 14f) }
+        )
+
+        val spoilerBox = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        spoilerBox.addView(makeFieldLabel(activity, if (tr) "Görünen başlık" else "Visible teaser", palette))
+        val teaserInput = makeExpressiveInput(
+            activity,
+            if (tr) "Örn: Sana bir şey diyeceğim..." else "e.g. Guess what...",
+            palette
+        )
+        spoilerBox.addView(
+            teaserInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 10f) }
+        )
+        spoilerBox.addView(makeFieldLabel(activity, if (tr) "Gizli metin" else "Hidden text", palette))
+        val hiddenInput = makeExpressiveInput(
+            activity,
+            if (tr) "Devamını oku'ya basınca görünecek..." else "Shown after tapping Read more...",
+            palette,
+            multiline = true
+        )
+        spoilerBox.addView(hiddenInput)
+
+        val blankBox = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        blankBox.addView(makeFieldLabel(activity, if (tr) "Boşluk boyutu" else "Blank size", palette))
+        val sizeRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        val sizes = listOf(
+            1 to (if (tr) "Kısa" else "Short"),
+            6 to (if (tr) "Orta" else "Medium"),
+            16 to (if (tr) "Uzun" else "Tall")
+        )
+        val sizeChips = mutableListOf<TextView>()
+        sizes.forEachIndexed { idx, (lines, label) ->
+            val chip = makeSelectableChip(activity, label, idx == 0, palette)
+            chip.setOnClickListener {
+                blankLines = lines
+                sizeChips.forEachIndexed { j, c -> applyChipStyle(c, j == idx, palette, activity) }
+            }
+            sizeChips.add(chip)
+            sizeRow.addView(
+                chip,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (idx < sizes.lastIndex) marginEnd = dp(activity, 6f)
+                }
+            )
+        }
+        blankBox.addView(sizeRow)
+
+        spoilerChip.setOnClickListener {
+            mode = 0
+            applyChipStyle(spoilerChip, true, palette, activity)
+            applyChipStyle(blankChip, false, palette, activity)
+            spoilerBox.visibility = View.VISIBLE
+            blankBox.visibility = View.GONE
+        }
+        blankChip.setOnClickListener {
+            mode = 1
+            applyChipStyle(spoilerChip, false, palette, activity)
+            applyChipStyle(blankChip, true, palette, activity)
+            spoilerBox.visibility = View.GONE
+            blankBox.visibility = View.VISIBLE
+        }
+
+        card.addView(
+            spoilerBox,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 14f) }
+        )
+        card.addView(
+            blankBox,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 14f) }
+        )
+
+        fun buildPayload(): String? {
+            return if (mode == 0) {
+                val teaser = teaserInput.text?.toString()?.trim().orEmpty()
+                val hidden = hiddenInput.text?.toString()?.trim().orEmpty()
+                if (teaser.isEmpty() || hidden.isEmpty()) {
+                    Toast.makeText(
+                        activity,
+                        if (tr) "Başlık ve gizli metni doldur" else "Fill both teaser and hidden text",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    null
+                } else {
+                    teaser + " " + "\u200E\u200B".repeat(2000) + "\n" + hidden
+                }
+            } else {
+                List(blankLines) { "\u2800" }.joinToString("\n")
+            }
+        }
+
+        val btnRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        btnRow.addView(
+            makePillButton(activity, if (tr) "Kutuya Yaz" else "Insert", palette.tonalBg, palette.tonalIcon, 16f) {
+                val payload = buildPayload() ?: return@makePillButton
+                insertToChat(activity, payload)
+                dialog.dismiss()
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(activity, 8f) }
+        )
+        btnRow.addView(
+            makePillButton(activity, if (tr) "Gönder" else "Send", palette.accent, Color.WHITE, 18f) {
+                val payload = buildPayload() ?: return@makePillButton
+                dialog.dismiss()
+                sendOnceToChat(activity, payload)
+            }
+        )
+        card.addView(btnRow)
+        presentExpressiveDialog(activity, dialog, card, 330f)
+    }
+
     private fun startBomber(activity: Activity, text: String, total: Int, delayMs: Long) {
         val entryId = activity.resources.getIdentifier("entry", "id", activity.packageName)
         val sendId = activity.resources.getIdentifier("send", "id", activity.packageName)
@@ -1997,6 +2378,27 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     canvas.drawPath(body, strokePaint)
                     canvas.drawLine(l + w * 0.44f, t + h * 0.44f, l + w * 0.44f, t + h * 0.68f, strokePaint)
                     canvas.drawLine(l + w * 0.56f, t + h * 0.44f, l + w * 0.56f, t + h * 0.68f, strokePaint)
+                }
+                IconKind.FONTS -> {
+                    val aPath = Path().apply {
+                        moveTo(l + w * 0.16f, t + h * 0.78f)
+                        lineTo(l + w * 0.38f, t + h * 0.22f)
+                        lineTo(l + w * 0.60f, t + h * 0.78f)
+                    }
+                    canvas.drawPath(aPath, strokePaint)
+                    canvas.drawLine(l + w * 0.24f, t + h * 0.60f, l + w * 0.52f, t + h * 0.60f, strokePaint)
+                    canvas.drawCircle(l + w * 0.74f, t + h * 0.64f, min(w, h) * 0.14f, strokePaint)
+                    canvas.drawLine(l + w * 0.88f, t + h * 0.50f, l + w * 0.88f, t + h * 0.78f, strokePaint)
+                }
+                IconKind.SPOILER -> {
+                    val eye = Path().apply {
+                        moveTo(l + w * 0.12f, cy)
+                        quadTo(cx, t + h * 0.14f, l + w * 0.88f, cy)
+                        quadTo(cx, t + h * 0.86f, l + w * 0.12f, cy)
+                    }
+                    canvas.drawPath(eye, strokePaint)
+                    canvas.drawCircle(cx, cy, min(w, h) * 0.14f, strokePaint)
+                    canvas.drawLine(l + w * 0.18f, t + h * 0.82f, l + w * 0.82f, t + h * 0.18f, strokePaint)
                 }
             }
         }
