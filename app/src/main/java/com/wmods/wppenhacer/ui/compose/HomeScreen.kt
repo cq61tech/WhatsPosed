@@ -57,6 +57,8 @@ import com.highcapable.yukihookapi.YukiHook
 import com.wmods.wppenhacer.App
 import com.wmods.wppenhacer.BuildConfig
 import com.wmods.wppenhacer.R
+import com.wmods.wppenhacer.UpdateChecker
+import android.util.Log
 import com.wmods.wppenhacer.xposed.core.FeatureLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -80,18 +82,25 @@ private fun fetchUpdate(): UpdateState =
             .build()
         val request = Request.Builder()
             .url("https://api.github.com/repos/cq61tech/WhatsPosed/releases/latest")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "WhatsPosed/${UpdateChecker.cleanVersion(BuildConfig.VERSION_NAME)}")
             .build()
         client.newCall(request).execute().use { response ->
+            Log.i("WhatsPosedUpdate", "HomeScreen check HTTP ${response.code}")
             if (!response.isSuccessful) return@use UpdateState.Failed
-            val tag = JSONObject(response.body?.string().orEmpty()).optString("tag_name", "")
-            if (tag.isBlank()) return@use UpdateState.Current
-            val parts = tag.split("-")
-            val hash = if (parts.size > 1) parts[1].trim() else ""
-            val isNew = hash.isNotEmpty() &&
-                !BuildConfig.VERSION_NAME.lowercase().contains(hash.lowercase())
-            if (isNew) UpdateState.Available(tag) else UpdateState.Current
+            val json = JSONObject(response.body?.string().orEmpty())
+            if (json.optBoolean("draft", false) || json.optBoolean("prerelease", false)) {
+                return@use UpdateState.Current
+            }
+            val rawTag = json.optString("tag_name", "").trim()
+            val cleanTag = UpdateChecker.cleanVersion(rawTag)
+            if (cleanTag.isBlank()) return@use UpdateState.Current
+            val isNew = UpdateChecker.isRemoteNewer(cleanTag, BuildConfig.VERSION_NAME)
+            Log.i("WhatsPosedUpdate", "HomeScreen local='${BuildConfig.VERSION_NAME}' remote='$cleanTag' isNew=$isNew")
+            if (isNew) UpdateState.Available(cleanTag) else UpdateState.Current
         }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        Log.e("WhatsPosedUpdate", "HomeScreen update check failed", e)
         UpdateState.Failed
     }
 

@@ -43,7 +43,7 @@ object FeatureLoader : YukiBaseHooker() {
     const val PACKAGE_WPP = "com.whatsapp"
     const val PACKAGE_BUSINESS = "com.whatsapp.w4b"
 
-    private const val UPDATE_CHECK_COOLDOWN_MS = 6 * 60 * 60 * 1000L
+    private const val UPDATE_CHECK_COOLDOWN_MS = 30_000L
     private const val HOME_ACTIVITY = "HomeActivity"
     private const val PLUGIN_LOAD_TIMEOUT_SECONDS = 15L
 

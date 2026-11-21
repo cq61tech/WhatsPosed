@@ -27,6 +27,8 @@ import com.highcapable.yukihookapi.YukiHook
 import com.wmods.wppenhacer.App
 import com.wmods.wppenhacer.BuildConfig
 import com.wmods.wppenhacer.R
+import com.wmods.wppenhacer.UpdateChecker
+import android.util.Log
 import com.wmods.wppenhacer.adapter.LogLineAdapter
 import com.wmods.wppenhacer.databinding.DialogDiagnosticsLogBinding
 import com.wmods.wppenhacer.databinding.FragmentHomeBinding
@@ -518,33 +520,38 @@ class HomeFragment : BaseFragment() {
 
                 val request = Request.Builder()
                     .url("https://api.github.com/repos/cq61tech/WhatsPosed/releases/latest")
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "WhatsPosed/${UpdateChecker.cleanVersion(BuildConfig.VERSION_NAME)}")
                     .build()
 
                 client.newCall(request).execute().use { response ->
+                    Log.i("WhatsPosedUpdate", "HomeFragment check HTTP ${response.code}")
                     if (!response.isSuccessful) {
                         updateCardState(success = false, isUpToDate = false, newVersion = null)
                         return@use
                     }
 
-                    val body = response.body
-                    val content = body.string()
+                    val content = response.body?.string().orEmpty()
                     val release = JSONObject(content)
-                    val tagName = release.optString("tag_name", "")
+                    if (release.optBoolean("draft", false) || release.optBoolean("prerelease", false)) {
+                        updateCardState(success = true, isUpToDate = true, newVersion = null)
+                        return@use
+                    }
+                    val rawTag = release.optString("tag_name", "").trim()
+                    val cleanTag = UpdateChecker.cleanVersion(rawTag)
 
-                    if (tagName.isBlank()) {
+                    if (cleanTag.isBlank()) {
                         updateCardState(success = true, isUpToDate = true, newVersion = null)
                         return@use
                     }
 
-                    val parts = tagName.split("-")
-                    val hash = if (parts.size > 1) parts[1].trim() else ""
-                    val isNewVersion = hash.isNotEmpty() && !BuildConfig.VERSION_NAME.lowercase()
-                        .contains(hash.lowercase().trim())
+                    val isNewVersion = UpdateChecker.isRemoteNewer(cleanTag, BuildConfig.VERSION_NAME)
+                    Log.i("WhatsPosedUpdate", "HomeFragment local='${BuildConfig.VERSION_NAME}' remote='$cleanTag' isNew=$isNewVersion")
 
                     updateCardState(
                         success = true,
                         isUpToDate = !isNewVersion,
-                        newVersion = tagName
+                        newVersion = cleanTag
                     )
                 }
             } catch (_: UnknownHostException) {
