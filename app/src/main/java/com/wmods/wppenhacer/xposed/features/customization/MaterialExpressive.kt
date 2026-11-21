@@ -356,28 +356,96 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         }
     }
 
-    private fun styleSearchPillClean(view: View, palette: ExpressivePalette) {
-        val parent = view.parent as? ViewGroup
-        if (parent != null) {
-            val pEntry = getEntryName(parent)
-            if (pEntry in SEARCH_WRAPPER_NAMES || pEntry.contains("search", ignoreCase = true)) {
-                parent.setBackgroundColor(Color.TRANSPARENT)
-                parent.elevation = 0f
-                parent.stateListAnimator = null
-            }
+    private fun hasSearchPillAncestor(view: View): Boolean {
+        var cur = view.parent as? View
+        var depth = 0
+        while (cur != null && depth < 4) {
+            if (getEntryName(cur) in SEARCH_PILL_NAMES) return true
+            cur = cur.parent as? View
+            depth++
         }
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                val c = view.getChildAt(i)
-                val cEntry = getEntryName(c)
-                if (cEntry in SEARCH_PILL_NAMES || cEntry.contains("search_plate", ignoreCase = true)) {
-                    c.setBackgroundColor(Color.TRANSPARENT)
+        return false
+    }
+
+    private fun stripNestedSearchBackgrounds(group: ViewGroup, palette: ExpressivePalette, depth: Int) {
+        if (depth > 5) return
+        for (i in 0 until group.childCount) {
+            val c = group.getChildAt(i)
+            val cEntry = getEntryName(c)
+            c.background = null
+            c.elevation = 0f
+            c.stateListAnimator = null
+            if (c is ImageView) {
+                val isSearchGlyph = cEntry.contains("search", ignoreCase = true) ||
+                    cEntry.contains("mag", ignoreCase = true) ||
+                    (cEntry.contains("icon", ignoreCase = true) &&
+                        !cEntry.contains("ai", ignoreCase = true) &&
+                        !cEntry.contains("meta", ignoreCase = true) &&
+                        !cEntry.contains("avatar", ignoreCase = true))
+                if (isSearchGlyph) {
+                    c.imageTintList = ColorStateList.valueOf(palette.primary)
                 }
             }
+            if (c is ViewGroup) {
+                stripNestedSearchBackgrounds(c, palette, depth + 1)
+            }
         }
-        applyPillBackground(view, palette.cardHigh, Color.TRANSPARENT, 28f, false)
+    }
+
+    private fun styleSearchPillClean(view: View, palette: ExpressivePalette, config: Config) {
+        if (hasSearchPillAncestor(view)) {
+            view.background = null
+            view.elevation = 0f
+            return
+        }
+        var ancestor = view.parent as? ViewGroup
+        var up = 0
+        while (ancestor != null && up < 2) {
+            val pEntry = getEntryName(ancestor)
+            if (pEntry in SEARCH_WRAPPER_NAMES || pEntry.contains("search", ignoreCase = true)) {
+                ancestor.setBackgroundColor(Color.TRANSPARENT)
+                ancestor.elevation = 0f
+                ancestor.stateListAnimator = null
+            }
+            ancestor = ancestor.parent as? ViewGroup
+            up++
+        }
+        if (view is ViewGroup) {
+            stripNestedSearchBackgrounds(view, palette, 0)
+        }
+        val ctx = view.context
+        val fill = ColorUtils.blendARGB(palette.card, palette.cardHigh, 0.72f)
+        val radius = dpf(ctx, 28f)
+        val shape = GradientDrawable().apply {
+            this.shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(fill)
+            if (config.cardOutline) {
+                setStroke(dp(ctx, 1f).coerceAtLeast(1), palette.outline)
+            }
+        }
+        val mask = GradientDrawable().apply {
+            this.shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+            setColor(Color.WHITE)
+        }
+        val ripple = RippleDrawable(ColorStateList.valueOf(palette.ripple), shape, mask)
+        val insetH = dp(ctx, 6f)
+        val insetV = dp(ctx, 4f)
+        val pStart = view.paddingStart
+        val pTop = view.paddingTop
+        val pEnd = view.paddingEnd
+        val pBottom = view.paddingBottom
+        view.background = InsetDrawable(ripple, insetH, insetV, insetH, insetV)
         view.elevation = 0f
         view.stateListAnimator = null
+        if (paddedViews.add(view)) {
+            val addH = dp(ctx, 12f)
+            val addV = dp(ctx, 2f)
+            view.setPaddingRelative(pStart + addH, pTop + addV, pEnd + addH, pBottom + addV)
+        } else {
+            view.setPaddingRelative(pStart, pTop, pEnd, pBottom)
+        }
     }
 
     private fun styleActivityWindow(activity: Activity, config: Config) {
@@ -432,7 +500,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             view.setBackgroundColor(Color.TRANSPARENT)
             view.elevation = 0f
         } else if (config.searchPill && entry in SEARCH_PILL_NAMES) {
-            styleSearchPillClean(view, palette)
+            styleSearchPillClean(view, palette, config)
         }
 
         if (config.chatComposer && isConv && entry in COMPOSER_NAMES) {
@@ -519,7 +587,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         }
 
         if (config.searchPill && entry in SEARCH_PILL_NAMES) {
-            view.post { runCatching { styleSearchPillClean(view, palette) } }
+            view.post { runCatching { styleSearchPillClean(view, palette, config) } }
             return
         }
 
@@ -797,8 +865,8 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         view.background = drawable
 
         if (paddedViews.add(view)) {
-            val extraH = dp(ctx, 6f)
-            val extraV = dp(ctx, 2f)
+            val extraH = dp(ctx, 14f)
+            val extraV = dp(ctx, 3f)
             view.setPaddingRelative(pStart + extraH, pTop + extraV, pEnd + extraH, pBottom + extraV)
         } else {
             view.setPaddingRelative(pStart, pTop, pEnd, pBottom)
