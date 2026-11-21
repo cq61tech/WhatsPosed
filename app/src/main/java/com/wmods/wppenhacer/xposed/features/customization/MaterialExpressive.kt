@@ -16,6 +16,8 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ScrollView
@@ -28,6 +30,7 @@ import com.wmods.wppenhacer.xposed.core.WppCore
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
     Feature(loader, preferences) {
@@ -66,6 +69,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
     private val paddedViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val styledViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val pendingContainers = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
+    private val observedLists = Collections.newSetFromMap(WeakHashMap<ViewGroup, Boolean>())
 
     override fun getPluginName(): String = "MaterialExpressive"
 
@@ -204,7 +208,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         val primaryContainer = ColorUtils.blendARGB(baseContainer, targetContainer, t)
         val onPrimaryContainer = ColorUtils.blendARGB(baseOnContainer, targetOnContainer, t)
         val outlineRgb = ColorUtils.blendARGB(baseOutline, targetOutline, t)
-        val outline = ColorUtils.setAlphaComponent(outlineRgb, if (dark) 62 else 82)
+        val outline = ColorUtils.setAlphaComponent(outlineRgb, if (dark) 40 else 58)
         val ripple = ColorUtils.setAlphaComponent(primary, if (dark) 44 else 32)
 
         return ExpressivePalette(
@@ -257,17 +261,60 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         }
     }
 
-    private fun isRecyclerOrList(view: View?): Boolean {
-        if (view == null) return false
-        if (view is ListView) return true
+    private fun classNameContains(view: View, token: String): Boolean {
         var cls: Class<*>? = view.javaClass
         var depth = 0
         while (cls != null && depth < 5) {
-            if (cls.name.contains("RecyclerView", ignoreCase = true)) return true
+            if (cls.name.contains(token, ignoreCase = true)) return true
             cls = cls.superclass
             depth++
         }
         return false
+    }
+
+    private fun isRecyclerOrList(view: View?): Boolean {
+        if (view == null) return false
+        if (view is ListView) return true
+        return classNameContains(view, "RecyclerView")
+    }
+
+    private fun isHorizontalContainer(view: View): Boolean {
+        if (view is HorizontalScrollView) return true
+        if (classNameContains(view, "HorizontalScroll") || classNameContains(view, "ViewPager")) return true
+        val lmHorizontal = runCatching {
+            val lm = view.javaClass.getMethod("getLayoutManager").invoke(view) ?: return@runCatching false
+            val canH = lm.javaClass.getMethod("canScrollHorizontally").invoke(lm) as? Boolean ?: false
+            val canV = lm.javaClass.getMethod("canScrollVertically").invoke(lm) as? Boolean ?: true
+            canH && !canV
+        }.getOrDefault(false)
+        if (lmHorizontal) return true
+
+        if (view is ViewGroup && view.childCount >= 2) {
+            var first: View? = null
+            var second: View? = null
+            for (i in 0 until view.childCount) {
+                val c = view.getChildAt(i)
+                if (c.visibility == View.VISIBLE && c.width > 0 && c.height > 0) {
+                    if (first == null) first = c else {
+                        second = c
+                        break
+                    }
+                }
+            }
+            if (first != null && second != null) {
+                val dx = abs(second.left - first.left)
+                val dy = abs(second.top - first.top)
+                if (dx > dy && dx > dp(view.context, 16f)) return true
+            }
+        }
+        return false
+    }
+
+    private fun isTopBarContainer(view: View, entry: String): Boolean {
+        if (entry in TOP_BAR_NAMES) return true
+        return classNameContains(view, "AppBarLayout") ||
+            classNameContains(view, "CollapsingToolbar") ||
+            classNameContains(view, "Toolbar")
     }
 
     private fun isFabView(view: View, entryName: String): Boolean {
@@ -275,14 +322,62 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         if (entryName == "fab" || entryName == "fab_second" || entryName == "fab_aux" ||
             entryName == "floating_action_button"
         ) return true
-        var cls: Class<*>? = view.javaClass
-        var depth = 0
-        while (cls != null && depth < 4) {
-            if (cls.simpleName.contains("FloatingActionButton", ignoreCase = true)) return true
-            cls = cls.superclass
-            depth++
+        return classNameContains(view, "FloatingActionButton")
+    }
+
+    private fun flattenTopBar(view: View, palette: ExpressivePalette, isConv: Boolean, config: Config) {
+        view.elevation = 0f
+        view.stateListAnimator = null
+        if (!isConv) {
+            view.setBackgroundColor(palette.canvas)
+        } else if (config.chatComposer) {
+            view.setBackgroundColor(palette.card)
         }
-        return false
+        if (view is ViewGroup) {
+            clearTopDividers(view, 0)
+        }
+    }
+
+    private fun clearTopDividers(group: ViewGroup, depth: Int) {
+        if (depth > 3) return
+        for (i in 0 until group.childCount) {
+            val child = group.getChildAt(i)
+            val entry = getEntryName(child)
+            if (isLikelyDivider(child, entry)) {
+                child.setBackgroundColor(Color.TRANSPARENT)
+                child.alpha = 0f
+            } else if (child is ViewGroup) {
+                if (entry in TOP_BAR_NAMES || classNameContains(child, "Toolbar")) {
+                    child.elevation = 0f
+                    child.stateListAnimator = null
+                }
+                clearTopDividers(child, depth + 1)
+            }
+        }
+    }
+
+    private fun styleSearchPillClean(view: View, palette: ExpressivePalette) {
+        val parent = view.parent as? ViewGroup
+        if (parent != null) {
+            val pEntry = getEntryName(parent)
+            if (pEntry in SEARCH_WRAPPER_NAMES || pEntry.contains("search", ignoreCase = true)) {
+                parent.setBackgroundColor(Color.TRANSPARENT)
+                parent.elevation = 0f
+                parent.stateListAnimator = null
+            }
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                val c = view.getChildAt(i)
+                val cEntry = getEntryName(c)
+                if (cEntry in SEARCH_PILL_NAMES || cEntry.contains("search_plate", ignoreCase = true)) {
+                    c.setBackgroundColor(Color.TRANSPARENT)
+                }
+            }
+        }
+        applyPillBackground(view, palette.cardHigh, Color.TRANSPARENT, 28f, false)
+        view.elevation = 0f
+        view.stateListAnimator = null
     }
 
     private fun styleActivityWindow(activity: Activity, config: Config) {
@@ -323,6 +418,27 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
 
         val isConv = isConversationActivity(activity)
 
+        if (config.hideDividers && !isConv && isLikelyDivider(view, entry)) {
+            view.setBackgroundColor(Color.TRANSPARENT)
+            view.alpha = 0f
+            return
+        }
+
+        if (config.searchPill && isTopBarContainer(view, entry)) {
+            flattenTopBar(view, palette, isConv, config)
+        }
+
+        if (config.searchPill && entry in SEARCH_WRAPPER_NAMES) {
+            view.setBackgroundColor(Color.TRANSPARENT)
+            view.elevation = 0f
+        } else if (config.searchPill && entry in SEARCH_PILL_NAMES) {
+            styleSearchPillClean(view, palette)
+        }
+
+        if (config.chatComposer && isConv && entry in COMPOSER_NAMES) {
+            applyPillBackground(view, palette.cardHigh, palette.outline, 26f, config.cardOutline)
+        }
+
         if (!isConv && view is ListView) {
             if (config.hideDividers) {
                 view.divider = ColorDrawable(Color.TRANSPARENT)
@@ -333,9 +449,13 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             }
         }
 
-        if (!isConv && isRecyclerOrList(view) && (config.chatsCards || config.settingsCards)) {
-            view.setBackgroundColor(palette.canvas)
-            if (view is ViewGroup) {
+        if (!isConv && isRecyclerOrList(view) && !isHorizontalContainer(view) &&
+            (config.chatsCards || config.settingsCards)
+        ) {
+            val allow = if (isSettingsLikeActivity(activity)) config.settingsCards else config.chatsCards
+            if (allow && view is ViewGroup) {
+                view.setBackgroundColor(palette.canvas)
+                observeVerticalList(view, config, palette)
                 scheduleListRestyle(view, config, palette)
             }
         }
@@ -347,22 +467,6 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             }
         }
 
-        if (config.searchPill && entry in TOOLBAR_NAMES) {
-            if (!isConv) {
-                view.setBackgroundColor(palette.canvas)
-            } else if (config.chatComposer) {
-                view.setBackgroundColor(palette.card)
-            }
-        }
-
-        if (config.searchPill && entry in SEARCH_BAR_NAMES) {
-            applyPillBackground(view, palette.cardHigh, palette.outline, 28f, config.cardOutline)
-        }
-
-        if (config.chatComposer && isConv && entry in COMPOSER_NAMES) {
-            applyPillBackground(view, palette.cardHigh, palette.outline, 26f, config.cardOutline)
-        }
-
         if (config.expressiveFab && isFabView(view, entry)) {
             styleFab(view, palette)
         }
@@ -371,6 +475,13 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             for (i in 0 until view.childCount) {
                 walkAndStyle(view.getChildAt(i), activity, config, palette, depth + 1)
             }
+        }
+    }
+
+    private fun observeVerticalList(list: ViewGroup, config: Config, palette: ExpressivePalette) {
+        if (!observedLists.add(list)) return
+        list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            scheduleListRestyle(list, config, palette)
         }
     }
 
@@ -396,21 +507,19 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             return
         }
 
-        if (config.searchPill && entry in SEARCH_BAR_NAMES) {
-            view.post {
-                runCatching {
-                    applyPillBackground(view, palette.cardHigh, palette.outline, 28f, config.cardOutline)
-                }
-            }
+        if (config.searchPill && isTopBarContainer(view, entry)) {
+            view.post { runCatching { flattenTopBar(view, palette, isConv, config) } }
             return
         }
 
-        if (config.searchPill && entry in TOOLBAR_NAMES) {
-            if (!isConv) {
-                view.setBackgroundColor(palette.canvas)
-            } else if (config.chatComposer) {
-                view.setBackgroundColor(palette.card)
-            }
+        if (config.searchPill && entry in SEARCH_WRAPPER_NAMES) {
+            view.setBackgroundColor(Color.TRANSPARENT)
+            view.elevation = 0f
+            return
+        }
+
+        if (config.searchPill && entry in SEARCH_PILL_NAMES) {
+            view.post { runCatching { styleSearchPillClean(view, palette) } }
             return
         }
 
@@ -418,16 +527,6 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             view.post {
                 runCatching {
                     applyPillBackground(view, palette.cardHigh, palette.outline, 26f, config.cardOutline)
-                }
-            }
-            return
-        }
-
-        if (config.searchPill && !isConv && entry in CHIP_NAMES) {
-            view.post {
-                runCatching {
-                    val bgColor = if (view.isSelected) palette.primaryContainer else palette.cardHigh
-                    applyPillBackground(view, bgColor, palette.outline, 20f, config.cardOutline)
                 }
             }
             return
@@ -443,18 +542,15 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
 
         val parent = view.parent as? ViewGroup ?: return
         if (isRecyclerOrList(parent)) {
+            if (isHorizontalContainer(parent)) return
             val allow = if (isSettingsLikeActivity(activity)) config.settingsCards else config.chatsCards
             if (!allow) return
             if (parent is ListView && config.hideDividers) {
                 parent.divider = ColorDrawable(Color.TRANSPARENT)
                 parent.dividerHeight = 0
             }
-            if (isStyleableListRow(view, entry)) {
-                applyRowCard(view, config, palette, topRound = true, bottomRound = true)
-                if (config.cardStyle == "segmented") {
-                    scheduleListRestyle(parent, config, palette)
-                }
-            }
+            observeVerticalList(parent, config, palette)
+            scheduleListRestyle(parent, config, palette)
         } else if (config.settingsCards && isSettingsLikeActivity(activity) && parent is LinearLayout &&
             parent.orientation == LinearLayout.VERTICAL
         ) {
@@ -465,26 +561,76 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun isLikelyDivider(view: View, entry: String): Boolean {
-        if (entry.contains("divider", ignoreCase = true) || entry.contains("separator", ignoreCase = true)) {
+        if (entry.contains("divider", ignoreCase = true) ||
+            entry.contains("separator", ignoreCase = true) ||
+            entry.contains("hairline", ignoreCase = true) ||
+            entry.contains("border_bottom", ignoreCase = true) ||
+            entry.contains("shadow", ignoreCase = true)
+        ) {
             return view !is ViewGroup || view.childCount == 0
         }
-        val lp = view.layoutParams ?: return false
-        val maxDividerPx = dp(view.context, 2f).coerceAtLeast(2)
-        return (view !is ViewGroup) && (view !is TextView) && lp.height in 1..maxDividerPx &&
-            (lp.width == ViewGroup.LayoutParams.MATCH_PARENT || lp.width > dp(view.context, 80f))
+        val maxDividerPx = dp(view.context, 3f).coerceAtLeast(3)
+        val lp = view.layoutParams
+        val h = if (view.height > 0) view.height else (lp?.height ?: 0)
+        val w = if (view.width > 0) view.width else (lp?.width ?: 0)
+        val wide = w == ViewGroup.LayoutParams.MATCH_PARENT || w > dp(view.context, 100f)
+        return (view !is ViewGroup) && (view !is TextView) && (view !is ImageView) && h in 1..maxDividerPx && wide
     }
 
-    private fun isStyleableListRow(view: View, entry: String): Boolean {
+    private fun containsForbiddenChild(view: View, depth: Int): Boolean {
+        if (depth > 4) return false
+        if (view is EditText || view is HorizontalScrollView) return true
+        if (depth > 0 && isRecyclerOrList(view)) return true
+        if (classNameContains(view, "ChipGroup") ||
+            classNameContains(view, "ViewPager") ||
+            classNameContains(view, "HorizontalScroll")
+        ) return true
+        val entry = getEntryName(view)
+        if (entry in SEARCH_PILL_NAMES || entry in SEARCH_WRAPPER_NAMES ||
+            entry.contains("inbox_filter", ignoreCase = true) ||
+            entry.contains("filter_chip", ignoreCase = true) ||
+            entry.contains("ig_status", ignoreCase = true) ||
+            entry.contains("status_bar", ignoreCase = true)
+        ) return true
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                if (containsForbiddenChild(view.getChildAt(i), depth + 1)) return true
+            }
+        }
+        return false
+    }
+
+    private fun hasNonEmptyVisibleText(view: View, depth: Int): Boolean {
+        if (view.visibility != View.VISIBLE) return false
+        if (view is TextView && !view.text.isNullOrBlank()) return true
+        if (view is ViewGroup && depth < 5) {
+            for (i in 0 until view.childCount) {
+                if (hasNonEmptyVisibleText(view.getChildAt(i), depth + 1)) return true
+            }
+        }
+        return false
+    }
+
+    private fun isValidRenderedRow(view: View, entry: String): Boolean {
         if (view !is ViewGroup) return false
-        if (view.childCount == 0) return false
-        if (entry.contains("header", ignoreCase = true) ||
-            entry.contains("search", ignoreCase = true) ||
-            entry.contains("filter", ignoreCase = true) ||
-            entry.contains("footer", ignoreCase = true) ||
-            entry.contains("banner", ignoreCase = true) ||
-            entry.contains("divider", ignoreCase = true)
-        ) return false
-        if (view.layoutParams?.height in 1..dp(view.context, 36f)) return false
+        if (view.visibility != View.VISIBLE || view.childCount == 0) return false
+        if (FORBIDDEN_ROW_TOKENS.any { entry.contains(it, ignoreCase = true) }) return false
+
+        val screenW = view.resources.displayMetrics.widthPixels
+        val minW = (screenW * 0.78f).toInt()
+        val w = view.width
+        val lpW = view.layoutParams?.width ?: 0
+        if (w > 0 && w < minW) return false
+        if (w == 0 && lpW > 0 && lpW < minW) return false
+
+        val minH = dp(view.context, 46f)
+        val h = view.height
+        val lpH = view.layoutParams?.height ?: 0
+        if (h > 0 && h < minH) return false
+        if (h == 0 && lpH in 1 until minH) return false
+
+        if (containsForbiddenChild(view, 0)) return false
+        if (!hasNonEmptyVisibleText(view, 0)) return false
         return true
     }
 
@@ -493,19 +639,55 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         list.post {
             pendingContainers.remove(list)
             runCatching {
-                val rows = mutableListOf<View>()
+                if (isHorizontalContainer(list)) {
+                    for (i in 0 until list.childCount) {
+                        val c = list.getChildAt(i)
+                        if (styledViews.remove(c)) c.background = null
+                    }
+                    return@runCatching
+                }
+
+                val group = mutableListOf<View>()
+
+                fun flushGroup() {
+                    if (group.isEmpty()) return
+                    group.forEachIndexed { idx, row ->
+                        applyRowCard(
+                            row,
+                            config,
+                            palette,
+                            topRound = idx == 0,
+                            bottomRound = idx == group.lastIndex
+                        )
+                    }
+                    group.clear()
+                }
+
                 for (i in 0 until list.childCount) {
                     val child = list.getChildAt(i)
-                    if (child.visibility == View.VISIBLE && isStyleableListRow(child, getEntryName(child))) {
-                        rows.add(child)
+                    if (child.visibility != View.VISIBLE) continue
+                    val entry = getEntryName(child)
+                    if (config.hideDividers && isLikelyDivider(child, entry)) {
+                        child.setBackgroundColor(Color.TRANSPARENT)
+                        child.alpha = 0f
+                        flushGroup()
+                        continue
+                    }
+                    if (isValidRenderedRow(child, entry)) {
+                        group.add(child)
+                    } else {
+                        if (styledViews.remove(child)) {
+                            child.background = null
+                        }
+                        if (config.hideDividers && child.height in 1..dp(list.context, 24f) &&
+                            !hasNonEmptyVisibleText(child, 0)
+                        ) {
+                            child.setBackgroundColor(Color.TRANSPARENT)
+                        }
+                        flushGroup()
                     }
                 }
-                if (rows.isEmpty()) return@runCatching
-                rows.forEachIndexed { idx, row ->
-                    val isTop = idx == 0
-                    val isBottom = idx == rows.lastIndex
-                    applyRowCard(row, config, palette, topRound = isTop, bottomRound = isBottom)
-                }
+                flushGroup()
             }
         }
     }
@@ -546,7 +728,11 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
                 flushGroup()
                 continue
             }
-            if (child is ViewGroup && child.childCount > 0 && (child.isClickable || child.hasOnClickListeners())) {
+            if (child is ViewGroup && child.childCount > 0 &&
+                (child.isClickable || child.hasOnClickListeners()) &&
+                !containsForbiddenChild(child, 0) &&
+                hasNonEmptyVisibleText(child, 0)
+            ) {
                 group.add(child)
             } else {
                 flushGroup()
@@ -611,7 +797,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         view.background = drawable
 
         if (paddedViews.add(view)) {
-            val extraH = dp(ctx, 12f)
+            val extraH = dp(ctx, 6f)
             val extraV = dp(ctx, 2f)
             view.setPaddingRelative(pStart + extraH, pTop + extraV, pEnd + extraH, pBottom + extraV)
         } else {
@@ -632,7 +818,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
             this.shape = GradientDrawable.RECTANGLE
             cornerRadius = dpf(ctx, radiusDp)
             setColor(fillColor)
-            if (showOutline) {
+            if (showOutline && outlineColor != Color.TRANSPARENT) {
                 setStroke(dp(ctx, 1f).coerceAtLeast(1), outlineColor)
             }
         }
@@ -688,7 +874,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         view.background = RippleDrawable(ColorStateList.valueOf(palette.ripple), shape, mask)
         view.backgroundTintList = null
         view.clipToOutline = true
-        if (view is android.widget.ImageView) {
+        if (view is ImageView) {
             view.imageTintList = ColorStateList.valueOf(palette.onPrimaryContainer)
         }
     }
@@ -700,20 +886,25 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         private val SETTINGS_ACTIVITIES = listOf(
             "Settings", "InfoActivity", "Info", "Privacy", "Account", "Profile", "Notifications", "Storage", "Help"
         )
-        private val TOOLBAR_NAMES = setOf(
-            "toolbar", "conversation_toolbar", "action_bar", "toolbar_holder"
+        private val TOP_BAR_NAMES = setOf(
+            "toolbar", "conversation_toolbar", "action_bar", "action_bar_container",
+            "toolbar_holder", "header", "appbar", "app_bar", "collapsing_toolbar"
         )
-        private val SEARCH_BAR_NAMES = setOf(
-            "my_search_bar", "search_bar", "search_holder", "search_container", "search_plate"
+        private val SEARCH_WRAPPER_NAMES = setOf(
+            "search_holder", "search_container", "search_bar_container", "header_search_container"
+        )
+        private val SEARCH_PILL_NAMES = setOf(
+            "my_search_bar", "search_bar", "search_plate"
         )
         private val COMPOSER_NAMES = setOf(
             "input_layout", "input_layout_content", "entry_container"
         )
-        private val CHIP_NAMES = setOf(
-            "inbox_filter", "filter_chip", "chip"
-        )
         private val DIALOG_NAMES = setOf(
             "design_bottom_sheet", "parentPanel"
+        )
+        private val FORBIDDEN_ROW_TOKENS = listOf(
+            "header", "search", "filter", "footer", "banner", "divider",
+            "status", "story", "stories", "chip", "tab", "spacer", "empty", "ig_"
         )
     }
 }
