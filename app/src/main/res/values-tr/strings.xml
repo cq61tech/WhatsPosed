@@ -602,4 +602,10 @@
     <string name="wpfb_preset_liquid_sum">Sürüklenebilir sıvı cam mercekli ve ışığı kıran iOS 26 stili</string>
     <string name="status_playback_controls">Durum oynatma kontrolleri</string>
     <string name="status_playback_controls_sum">Durumlarda hız, ±5sn sarma, duraklatma ve temiz tam ekran izleme hapı ekler</string>
+    <string name="liquid_glass_chat">Liquid Glass sohbet arayüzü</string>
+    <string name="liquid_glass_chat_sum">Sohbet üst barını ve mesaj kutusunu birbirinden ayrık yüzen sıvı cam adacıklarına dönüştürür</string>
+    <string name="elastic_message_press">Akışkan esneyen mesajlar</string>
+    <string name="elastic_message_press_sum">Mesajlara basılı tutup hafifçe çektiğinde jel gibi esneyip yaylanarak yerine döner</string>
+    <string name="chat_video_player_pro">Sohbet video oynatıcı araçları</string>
+    <string name="chat_video_player_pro_sum">Çift dokunarak ±10sn sarma, hız hapı (0.5x–2.5x) ve kenardan kaydırarak parlaklık/ses ayarı ekler</string>
 </resources>

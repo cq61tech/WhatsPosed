@@ -182,6 +182,16 @@
             app:key="chat_floating_tools"
             app:summary="@string/chat_floating_tools_sum"
             app:title="@string/chat_floating_tools" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="liquid_glass_chat"
+            app:summary="@string/liquid_glass_chat_sum"
+            app:title="@string/liquid_glass_chat" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="elastic_message_press"
+            app:summary="@string/elastic_message_press_sum"
+            app:title="@string/elastic_message_press" />
     </PreferenceCategory>
 
     <PreferenceCategory

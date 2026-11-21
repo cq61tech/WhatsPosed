@@ -676,4 +676,10 @@
     <string name="wpfb_preset_liquid_sum">iOS 26 refracting liquid glass with draggable magnifying pill</string>
     <string name="status_playback_controls">Status playback controls</string>
     <string name="status_playback_controls_sum">Add floating speed, ±5s seek, pause, and clean fullscreen toggle on statuses</string>
+    <string name="liquid_glass_chat">Liquid Glass chat UI</string>
+    <string name="liquid_glass_chat_sum">Transforms chat header and composer into separated floating liquid-glass islands</string>
+    <string name="elastic_message_press">Elastic message stretch</string>
+    <string name="elastic_message_press_sum">Messages softly stretch toward your finger like gel when held and dragged</string>
+    <string name="chat_video_player_pro">Chat video player tools</string>
+    <string name="chat_video_player_pro_sum">Double-tap ±10s seek, playback speed pill (0.5x–2.5x), and edge swipe for brightness/volume</string>
 </resources>
