@@ -1,7 +1,10 @@
 package com.wmods.wppenhacer.xposed.features.others
 
 import android.app.Activity
+import android.content.Context
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
@@ -35,8 +38,11 @@ import com.highcapable.yukihookapi.extension.kavaref.hook
 import com.wmods.wppenhacer.xposed.core.Feature
 import com.wmods.wppenhacer.xposed.core.WppCore
 import com.wmods.wppenhacer.xposed.core.devkit.Unobfuscator
+import java.lang.ref.Reference
 import java.lang.ref.WeakReference
 import java.lang.reflect.Method
+import java.lang.reflect.Modifier
+import java.util.concurrent.atomic.AtomicReference
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.Locale
@@ -77,6 +83,7 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
     private val states = WeakHashMap<Activity, StatusState>()
     private val waTrackers = Collections.synchronizedMap(WeakHashMap<Any, WaPlayerTracker>())
     private val viewToWaPlayer = Collections.synchronizedMap(WeakHashMap<View, Any>())
+    private val waToSpeedTarget = Collections.synchronizedMap(WeakHashMap<Any, Pair<Any, Method>>())
 
     @Volatile
     private var activeStatusActivity: WeakReference<Activity>? = null
@@ -92,7 +99,7 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
     private var waGetDurMethod: Method? = null
     private var waGetViewMethod: Method? = null
     private var waIsPlayingMethod: Method? = null
-    private var innerSpeedMethod: Method? = null
+    private var speedMethods: List<Method> = emptyList()
 
     override fun getPluginName(): String = "StatusPlaybackControls"
 
@@ -159,7 +166,14 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
             waIsPlayingMethod = resolveMethod(waCls, "isPlaying")?.apply { isAccessible = true }
         }
 
-        innerSpeedMethod = Unobfuscator.loadHeroSetSpeedV3(classLoader)?.apply { isAccessible = true }
+        val foundSpeeds = mutableListOf<Method>()
+        Unobfuscator.loadHeroPlayerSpeedV4(classLoader)?.apply { isAccessible = true }?.let { foundSpeeds.add(it) }
+        Unobfuscator.loadHeroServiceSpeedV4(classLoader)?.apply { isAccessible = true }?.let { m ->
+            if (foundSpeeds.none { it.declaringClass == m.declaringClass && it.name == m.name }) {
+                foundSpeeds.add(m)
+            }
+        }
+        speedMethods = foundSpeeds
 
         waGetViewMethod?.hook {
             after {
@@ -648,32 +662,78 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         return null
     }
 
-    private fun findInnerTarget(
-        root: Any,
-        targetClass: Class<*>,
-        visited: MutableSet<Any>,
-        depth: Int
-    ): Any? {
-        if (depth > 2 || !visited.add(root)) return null
-        if (targetClass.isInstance(root)) return root
-        var cls: Class<*>? = root.javaClass
-        var hops = 0
-        while (cls != null && cls != Any::class.java && hops < 3) {
-            val fields = runCatching { cls.declaredFields }.getOrNull() ?: break
-            for (f in fields) {
-                val ft = f.type
-                if (ft.isPrimitive || ft == String::class.java || ft.isArray) continue
-                val v = runCatching {
-                    f.isAccessible = true
-                    f.get(root)
-                }.getOrNull() ?: continue
-                if (targetClass.isInstance(v)) return v
-                if (depth < 2) {
-                    findInnerTarget(v, targetClass, visited, depth + 1)?.let { return it }
+    private fun findSpeedTargetByBfs(root: Any): Pair<Any, Method>? {
+        val methods = speedMethods
+        if (methods.isEmpty()) return null
+
+        val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
+        val queue = ArrayDeque<Pair<Any, Int>>()
+        visited.add(root)
+        queue.addLast(root to 0)
+        var scanned = 0
+
+        fun enqueue(v: Any?, nextDepth: Int) {
+            if (v == null) return
+            if (v is Reference<*>) {
+                enqueue(v.get(), nextDepth)
+                return
+            }
+            if (v is AtomicReference<*>) {
+                enqueue(v.get(), nextDepth)
+                return
+            }
+            if (v is String || v is Number || v is Boolean || v is Char || v is Enum<*>) return
+            if (v is View || v is Context || v is Class<*> || v is Handler || v is Looper || v is Thread) return
+            if (v is Collection<*>) {
+                var c = 0
+                for (item in v) {
+                    if (c++ >= 12) break
+                    enqueue(item, nextDepth)
+                }
+                return
+            }
+            if (v is Array<*>) {
+                val lim = min(v.size, 12)
+                for (i in 0 until lim) enqueue(v[i], nextDepth)
+                return
+            }
+            val cn = v.javaClass.name
+            if (cn.startsWith("android.") || cn.startsWith("androidx.") ||
+                cn.startsWith("java.lang.") || cn.startsWith("kotlin.")
+            ) return
+            if (visited.add(v)) {
+                queue.addLast(v to nextDepth)
+            }
+        }
+
+        while (queue.isNotEmpty() && scanned < 650) {
+            val (cur, depth) = queue.removeFirst()
+            scanned++
+
+            for (m in methods) {
+                if (m.declaringClass.isInstance(cur)) {
+                    return cur to m
                 }
             }
-            cls = cls.superclass
-            hops++
+            if (depth >= 7) continue
+
+            var cls: Class<*>? = cur.javaClass
+            var hops = 0
+            while (cls != null && cls != Any::class.java && hops < 5) {
+                val fields = runCatching { cls.declaredFields }.getOrNull() ?: break
+                for (f in fields) {
+                    if (Modifier.isStatic(f.modifiers)) continue
+                    val ft = f.type
+                    if (ft.isPrimitive || ft == String::class.java) continue
+                    val v = runCatching {
+                        f.isAccessible = true
+                        f.get(cur)
+                    }.getOrNull() ?: continue
+                    enqueue(v, depth + 1)
+                }
+                cls = cls.superclass
+                hops++
+            }
         }
         return null
     }
@@ -713,11 +773,11 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         }
 
         override fun setSpeed(speed: Float): Boolean {
-            val speedM = innerSpeedMethod ?: return false
-            val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
-            val target = findInnerTarget(player, speedM.declaringClass, visited, 0) ?: return false
+            val pair = waToSpeedTarget[player] ?: findSpeedTargetByBfs(player)?.also {
+                waToSpeedTarget[player] = it
+            } ?: return false
             return runCatching {
-                speedM.invoke(target, speed)
+                pair.second.invoke(pair.first, speed)
                 true
             }.getOrDefault(false)
         }
