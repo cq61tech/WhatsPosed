@@ -553,4 +553,6 @@
     <string name="plugin_loading_starting">Güncellemeden sonra özellikler hazırlanıyor…</string>
     <string name="plugin_loading_progress">Özellikler hazırlanıyor… %1$d/%2$d</string>
     <string name="plugin_loading_channel">Özellik yükleme</string>
+    <string name="chat_floating_tools">Sohbet Araç Baloncuğu</string>
+    <string name="chat_floating_tools_sum">Sohbet ekranında hızlı araçlar menüsünü açan yüzen yeşil baloncuk gösterir</string>
 </resources>

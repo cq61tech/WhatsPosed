@@ -171,6 +171,12 @@
             app:key="bubble_right"
             app:summary="@string/default_color"
             app:title="@string/bubble_right" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            android:defaultValue="false"
+            app:key="chat_floating_tools"
+            app:summary="@string/chat_floating_tools_sum"
+            app:title="@string/chat_floating_tools" />
     </PreferenceCategory>
 
     <PreferenceCategory
