@@ -608,4 +608,16 @@
     <string name="elastic_message_press_sum">Mesajlara basılı tutup hafifçe çektiğinde jel gibi esneyip yaylanarak yerine döner</string>
     <string name="chat_video_player_pro">Sohbet video oynatıcı araçları</string>
     <string name="chat_video_player_pro_sum">Çift dokunarak ±10sn sarma, hız hapı (0.5x–2.5x) ve kenardan kaydırarak parlaklık/ses ayarı ekler</string>
+    <string name="elastic_stretch_amount">Esneme miktarı (%)</string>
+    <string name="elastic_stretch_amount_sum">Mesajların çekerken parmağına doğru ne kadar uzayacağını ayarlar</string>
+    <string name="elastic_bounce_amount">Zıplama / Bouncy miktarı (%)</string>
+    <string name="elastic_bounce_amount_sum">Mesajı bıraktığında geri yaylanma ve sallanma şiddetini ayarlar</string>
+    <string name="elastic_jelly_amount">Jöle sıkışma-uzama (%)</string>
+    <string name="elastic_jelly_amount_sum">Çekerken ve bırakırken oluşan akışkan jöle deformasyonunu ayarlar</string>
+    <string name="elastic_tilt_amount">3D eğilme miktarı (%)</string>
+    <string name="elastic_tilt_amount_sum">Mesajı çekerken oluşan 3D perspektif eğimini ayarlar</string>
+    <string name="elastic_hold_delay">Basılı tutma gecikmesi (ms)</string>
+    <string name="elastic_hold_delay_sum">Esneme başlamadan önceki bekleme süresi (düşük = anında esner, yüksek = yanıtla daha rahat)</string>
+    <string name="elastic_haptic">Dokunsal titreşim</string>
+    <string name="elastic_haptic_sum">Mesajı tutup esnetirken ve bırakırken hafif titreşim verir</string>
 </resources>

@@ -192,6 +192,68 @@
             app:key="elastic_message_press"
             app:summary="@string/elastic_message_press_sum"
             app:title="@string/elastic_message_press" />
+
+        <androidx.preference.SeekBarPreference
+            android:max="200"
+            app:defaultValue="120"
+            app:dependency="elastic_message_press"
+            app:key="elastic_stretch_amount"
+            app:min="30"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:summary="@string/elastic_stretch_amount_sum"
+            app:title="@string/elastic_stretch_amount" />
+
+        <androidx.preference.SeekBarPreference
+            android:max="200"
+            app:defaultValue="125"
+            app:dependency="elastic_message_press"
+            app:key="elastic_bounce_amount"
+            app:min="0"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:summary="@string/elastic_bounce_amount_sum"
+            app:title="@string/elastic_bounce_amount" />
+
+        <androidx.preference.SeekBarPreference
+            android:max="200"
+            app:defaultValue="120"
+            app:dependency="elastic_message_press"
+            app:key="elastic_jelly_amount"
+            app:min="0"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:summary="@string/elastic_jelly_amount_sum"
+            app:title="@string/elastic_jelly_amount" />
+
+        <androidx.preference.SeekBarPreference
+            android:max="200"
+            app:defaultValue="100"
+            app:dependency="elastic_message_press"
+            app:key="elastic_tilt_amount"
+            app:min="0"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:summary="@string/elastic_tilt_amount_sum"
+            app:title="@string/elastic_tilt_amount" />
+
+        <androidx.preference.SeekBarPreference
+            android:max="250"
+            app:defaultValue="95"
+            app:dependency="elastic_message_press"
+            app:key="elastic_hold_delay"
+            app:min="40"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:summary="@string/elastic_hold_delay_sum"
+            app:title="@string/elastic_hold_delay" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:defaultValue="true"
+            app:dependency="elastic_message_press"
+            app:key="elastic_haptic"
+            app:summary="@string/elastic_haptic_sum"
+            app:title="@string/elastic_haptic" />
     </PreferenceCategory>
 
     <PreferenceCategory

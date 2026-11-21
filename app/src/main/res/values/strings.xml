@@ -682,4 +682,16 @@
     <string name="elastic_message_press_sum">Messages softly stretch toward your finger like gel when held and dragged</string>
     <string name="chat_video_player_pro">Chat video player tools</string>
     <string name="chat_video_player_pro_sum">Double-tap ±10s seek, playback speed pill (0.5x–2.5x), and edge swipe for brightness/volume</string>
+    <string name="elastic_stretch_amount">Stretch distance (%)</string>
+    <string name="elastic_stretch_amount_sum">How far messages stretch toward your finger while dragging</string>
+    <string name="elastic_bounce_amount">Bounce intensity (%)</string>
+    <string name="elastic_bounce_amount_sum">Springiness and overshoot wobble when you release a message</string>
+    <string name="elastic_jelly_amount">Jelly squash &amp; stretch (%)</string>
+    <string name="elastic_jelly_amount_sum">Liquid gel deformation intensity while pulling and rebounding</string>
+    <string name="elastic_tilt_amount">3D tilt &amp; rotation (%)</string>
+    <string name="elastic_tilt_amount_sum">Perspective tilt and twist angle while dragging messages</string>
+    <string name="elastic_hold_delay">Hold delay (ms)</string>
+    <string name="elastic_hold_delay_sum">Time to hold before gel stretch engages (lower = faster, higher = easier swipe-to-reply)</string>
+    <string name="elastic_haptic">Elastic haptic feedback</string>
+    <string name="elastic_haptic_sum">Subtle vibration when grabbing and releasing stretched messages</string>
 </resources>
