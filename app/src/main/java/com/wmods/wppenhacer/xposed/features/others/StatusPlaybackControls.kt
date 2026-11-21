@@ -19,7 +19,6 @@ import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.Surface
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
@@ -61,21 +60,12 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         var playBtn: ImageView? = null
         var speedBtn: TextView? = null
         var savedY = Float.NaN
+        var boundPlayerRef: WeakReference<Any>? = null
     }
 
-    private class HeroTracker {
-        var active = true
+    private class WaPlayerTracker {
         var paused = false
-        var speed = 1f
-        var basePosMs = 0L
-        var playStartMs = SystemClock.uptimeMillis()
-        var lastTouchMs = SystemClock.uptimeMillis()
-
-        fun estimatePosMs(): Long {
-            if (paused) return basePosMs.coerceAtLeast(0L)
-            val elapsed = ((SystemClock.uptimeMillis() - playStartMs) * speed).toLong()
-            return (basePosMs + elapsed).coerceAtLeast(0L)
-        }
+        var lastStartMs = SystemClock.uptimeMillis()
     }
 
     private interface PlayerHandle {
@@ -85,34 +75,31 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
     }
 
     private val states = WeakHashMap<Activity, StatusState>()
-    private val heroTrackers = Collections.synchronizedMap(WeakHashMap<Any, HeroTracker>())
-    private val viewToPlayer = Collections.synchronizedMap(WeakHashMap<View, Any>())
+    private val waTrackers = Collections.synchronizedMap(WeakHashMap<Any, WaPlayerTracker>())
+    private val viewToWaPlayer = Collections.synchronizedMap(WeakHashMap<View, Any>())
 
     @Volatile
     private var activeStatusActivity: WeakReference<Activity>? = null
     @Volatile
     private var lastMediaPlayer: WeakReference<MediaPlayer>? = null
     @Volatile
-    private var lastHeroPlayer: WeakReference<Any>? = null
+    private var lastWaPlayer: WeakReference<Any>? = null
 
-    private var heroClass: Class<*>? = null
-    private var waHeroClass: Class<*>? = null
-    private var heroViewClass: Class<*>? = null
-
-    private var heroSpeedMethod: Method? = null
-    private var heroPlayMethod: Method? = null
-    private var heroPauseMethod: Method? = null
-    private var heroSeekMethod: Method? = null
-    private var heroSetSurfaceMethod: Method? = null
-    private var heroGetPosMethod: Method? = null
-    private var heroIsPlayingMethod: Method? = null
+    private var waStartMethod: Method? = null
+    private var waPauseMethod: Method? = null
+    private var waSeekMethod: Method? = null
+    private var waGetPosMethod: Method? = null
+    private var waGetDurMethod: Method? = null
+    private var waGetViewMethod: Method? = null
+    private var waIsPlayingMethod: Method? = null
+    private var innerSpeedMethod: Method? = null
 
     override fun getPluginName(): String = "StatusPlaybackControls"
 
     override fun doHook() {
         if (!xprefs.getBoolean("status_playback_controls", false)) return
 
-        setupHeroPlayerHooks()
+        setupWaHeroPlayerHooks()
 
         runCatching {
             MediaPlayer::class.java.resolve().firstMethod {
@@ -155,142 +142,87 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         return !act.isFinishing && !act.isDestroyed
     }
 
-    private fun setupHeroPlayerHooks() {
-        heroClass = runCatching { classLoader.loadClass(HERO_PLAYER_NAME) }.getOrNull()
-        waHeroClass = runCatching { classLoader.loadClass(WA_HERO_PLAYER_NAME) }.getOrNull()
-        heroViewClass = runCatching { classLoader.loadClass(HERO_VIEW_NAME) }.getOrNull()
+    private fun resolveMethod(cls: Class<*>, name: String, vararg params: Class<*>): Method? {
+        return runCatching { cls.getDeclaredMethod(name, *params) }.getOrNull()
+            ?: runCatching { cls.getMethod(name, *params) }.getOrNull()
+    }
 
-        heroSpeedMethod = Unobfuscator.loadHeroVideoSetSpeedV2(classLoader)?.apply { isAccessible = true }
-        heroPlayMethod = Unobfuscator.loadHeroVideoPlayV2(classLoader)?.apply { isAccessible = true }
-        heroPauseMethod = Unobfuscator.loadHeroVideoPauseV2(classLoader)?.apply { isAccessible = true }
-        heroSeekMethod = Unobfuscator.loadHeroVideoSeekV2(classLoader)?.apply { isAccessible = true }
-        heroSetSurfaceMethod = Unobfuscator.loadHeroVideoSetSurfaceV2(classLoader)?.apply { isAccessible = true }
-
-        val hc = heroClass ?: heroSpeedMethod?.declaringClass
-        if (hc != null) {
-            heroClass = hc
-            heroGetPosMethod = runCatching {
-                hc.methods.firstOrNull { m ->
-                    m.parameterTypes.isEmpty() &&
-                        (m.name == "getCurrentPosition" || m.name == "getCurrentPositionMs") &&
-                        (m.returnType == Long::class.javaPrimitiveType || m.returnType == Int::class.javaPrimitiveType)
-                }?.apply { isAccessible = true }
-            }.getOrNull()
-            heroIsPlayingMethod = runCatching {
-                hc.methods.firstOrNull { m ->
-                    m.parameterTypes.isEmpty() && m.name == "isPlaying" &&
-                        m.returnType == Boolean::class.javaPrimitiveType
-                }?.apply { isAccessible = true }
-            }.getOrNull()
+    private fun setupWaHeroPlayerHooks() {
+        val waCls = runCatching { classLoader.loadClass(WA_HERO_PLAYER_NAME) }.getOrNull()
+        if (waCls != null) {
+            waStartMethod = resolveMethod(waCls, "start")?.apply { isAccessible = true }
+            waPauseMethod = resolveMethod(waCls, "pause")?.apply { isAccessible = true }
+            waSeekMethod = resolveMethod(waCls, "seekTo", Int::class.javaPrimitiveType!!)?.apply { isAccessible = true }
+            waGetPosMethod = resolveMethod(waCls, "getCurrentPosition")?.apply { isAccessible = true }
+            waGetDurMethod = resolveMethod(waCls, "getDuration")?.apply { isAccessible = true }
+            waGetViewMethod = resolveMethod(waCls, "getView")?.apply { isAccessible = true }
+            waIsPlayingMethod = resolveMethod(waCls, "isPlaying")?.apply { isAccessible = true }
         }
 
-        val setPlayerMethod = Unobfuscator.loadFbHeroViewSetPlayerV2(classLoader)
-        setPlayerMethod?.hook {
+        innerSpeedMethod = Unobfuscator.loadHeroSetSpeedV3(classLoader)?.apply { isAccessible = true }
+
+        waGetViewMethod?.hook {
             after {
-                val view = instanceOrNull as? View ?: return@after
-                val p = args.firstOrNull { a -> a != null && isHeroInstance(a) }
-                if (p != null) {
-                    viewToPlayer[view] = p
-                    val trk = trackerOf(p)
-                    trk.active = true
-                    trk.lastTouchMs = SystemClock.uptimeMillis()
-                    if (isStatusActivityOpen()) {
-                        lastHeroPlayer = WeakReference(p)
+                val player = instanceOrNull ?: return@after
+                val view = result as? View ?: return@after
+                viewToWaPlayer[view] = player
+            }
+        }
+
+        waStartMethod?.hook {
+            after {
+                val player = instanceOrNull ?: return@after
+                val trk = trackerOf(player)
+                trk.paused = false
+                trk.lastStartMs = SystemClock.uptimeMillis()
+                lastWaPlayer = WeakReference(player)
+                runCatching {
+                    (waGetViewMethod?.invoke(player) as? View)?.let { v ->
+                        viewToWaPlayer[v] = player
+                    }
+                }
+                val act = activeStatusActivity?.get()
+                if (act != null && !act.isFinishing && !act.isDestroyed) {
+                    act.runOnUiThread {
+                        val st = stateOf(act)
+                        val prev = st.boundPlayerRef?.get()
+                        if (prev !== player) {
+                            st.boundPlayerRef = WeakReference(player)
+                            st.speedIdx = 0
+                            st.speedBtn?.text = SPEED_LABELS[0]
+                        }
+                        st.paused = false
+                        st.playBtn?.setImageDrawable(
+                            StatusIconDrawable(BtnIcon.PAUSE, Color.WHITE, dpf(act, 1.9f))
+                        )
                     }
                 }
             }
         }
 
-        heroSetSurfaceMethod?.hook {
+        waPauseMethod?.hook {
             after {
                 val player = instanceOrNull ?: return@after
-                val surf = args.firstOrNull() as? Surface
-                val trk = trackerOf(player)
-                trk.active = surf != null
-                trk.lastTouchMs = SystemClock.uptimeMillis()
-                if (surf != null && isStatusActivityOpen()) {
-                    lastHeroPlayer = WeakReference(player)
-                }
-            }
-        }
-
-        heroPlayMethod?.hook {
-            after {
-                val player = instanceOrNull ?: return@after
-                val trk = trackerOf(player)
-                trk.active = true
-                trk.paused = false
-                trk.playStartMs = SystemClock.uptimeMillis()
-                trk.lastTouchMs = SystemClock.uptimeMillis()
-                if (isStatusActivityOpen()) {
-                    lastHeroPlayer = WeakReference(player)
-                    val act = activeStatusActivity?.get()
-                    if (act != null && !act.isFinishing && !act.isDestroyed) {
-                        act.runOnUiThread {
-                            val st = stateOf(act)
-                            st.paused = false
+                trackerOf(player).paused = true
+                val act = activeStatusActivity?.get()
+                if (act != null && !act.isFinishing && !act.isDestroyed) {
+                    act.runOnUiThread {
+                        val st = stateOf(act)
+                        if (st.boundPlayerRef?.get() === player) {
+                            st.paused = true
                             st.playBtn?.setImageDrawable(
-                                StatusIconDrawable(BtnIcon.PAUSE, Color.WHITE, dpf(act, 1.9f))
+                                StatusIconDrawable(BtnIcon.PLAY, Color.WHITE, dpf(act, 1.9f))
                             )
                         }
                     }
                 }
             }
         }
-
-        heroPauseMethod?.hook {
-            after {
-                val player = instanceOrNull ?: return@after
-                val trk = trackerOf(player)
-                trk.basePosMs = trk.estimatePosMs()
-                trk.paused = true
-            }
-        }
-
-        heroSeekMethod?.hook {
-            after {
-                val player = instanceOrNull ?: return@after
-                val pos = (args.firstOrNull() as? Number)?.toLong() ?: return@after
-                val trk = trackerOf(player)
-                trk.basePosMs = pos.coerceAtLeast(0L)
-                trk.playStartMs = SystemClock.uptimeMillis()
-            }
-        }
-
-        heroSpeedMethod?.hook {
-            after {
-                val player = instanceOrNull ?: return@after
-                val spd = args.firstOrNull() as? Float ?: return@after
-                val trk = trackerOf(player)
-                trk.basePosMs = trk.estimatePosMs()
-                trk.playStartMs = SystemClock.uptimeMillis()
-                trk.speed = spd
-            }
-        }
     }
 
-    private fun isHeroInstance(obj: Any): Boolean {
-        val hc = heroClass
-        if (hc != null && hc.isInstance(obj)) return true
-        return obj.javaClass.name == HERO_PLAYER_NAME
-    }
-
-    private fun isWaHeroInstance(obj: Any): Boolean {
-        val wc = waHeroClass
-        if (wc != null && wc.isInstance(obj)) return true
-        return obj.javaClass.name == WA_HERO_PLAYER_NAME
-    }
-
-    private fun isHeroViewInstance(view: View): Boolean {
-        val vc = heroViewClass
-        if (vc != null && vc.isInstance(view)) return true
-        val n = view.javaClass.simpleName
-        return n.contains("HeroPlayerView", ignoreCase = true) || n.contains("VideoPlayerView", ignoreCase = true)
-    }
-
-    private fun trackerOf(player: Any): HeroTracker {
-        synchronized(heroTrackers) {
-            return heroTrackers.getOrPut(player) { HeroTracker() }
+    private fun trackerOf(player: Any): WaPlayerTracker {
+        synchronized(waTrackers) {
+            return waTrackers.getOrPut(player) { WaPlayerTracker() }
         }
     }
 
@@ -526,7 +458,8 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
                 if (v.id != View.NO_ID && v.id > 0) v.resources.getResourceEntryName(v.id) else ""
             }.getOrDefault("")
 
-            val isMedia = v is SurfaceView || v is TextureView || v is VideoView || isHeroViewInstance(v) ||
+            val isMedia = v is SurfaceView || v is TextureView || v is VideoView ||
+                viewToWaPlayer.containsKey(v) ||
                 (v is ImageView && v.width >= screenW * 0.55f && v.height >= screenH * 0.32f) ||
                 (v is TextView && entry.contains("message_text", ignoreCase = true) && v.height >= screenH * 0.20f)
             if (isMedia) {
@@ -597,7 +530,7 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         } else {
             Toast.makeText(
                 activity,
-                if (tr) "Hız metodu eşleşmedi" else "Speed method unavailable",
+                if (tr) "Hız bu videoda değiştirilemedi" else "Speed unavailable for this video",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -613,12 +546,6 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
             val sec = (deltaMs / 1000L).toInt()
             val label = if (sec > 0) "+${sec}s" else "${sec}s"
             Toast.makeText(activity, label, Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(
-                activity,
-                if (tr) "Sarma metodu eşleşmedi" else "Seek method unavailable",
-                Toast.LENGTH_SHORT
-            ).show()
         }
     }
 
@@ -639,12 +566,6 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
                     dpf(activity, 1.9f)
                 )
             )
-        } else {
-            Toast.makeText(
-                activity,
-                if (tr) "Duraklatma metodu eşleşmedi" else "Pause method unavailable",
-                Toast.LENGTH_SHORT
-            ).show()
         }
     }
 
@@ -656,100 +577,50 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         ).show()
     }
 
-    private fun findLiveHeroPlayer(): Any? {
-        synchronized(heroTrackers) {
-            val best = heroTrackers.entries
-                .filter { it.value.active }
-                .maxByOrNull { it.value.lastTouchMs }
-                ?.key
-            if (best != null) return best
-        }
-        return lastHeroPlayer?.get()
-    }
-
-    private fun findVisibleHeroViews(root: ViewGroup): List<View> {
-        val found = mutableListOf<Pair<View, Int>>()
+    private fun findVisibleWaPlayer(activity: Activity): Any? {
+        val decor = activity.window?.decorView ?: return null
         val rect = Rect()
-        fun walk(v: View) {
-            if (v.visibility != View.VISIBLE) return
-            if (isHeroViewInstance(v)) {
-                val area = if (v.getGlobalVisibleRect(rect)) rect.width() * rect.height() else 0
-                found.add(v to area)
-            }
-            if (v is ViewGroup) {
-                for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        var bestPlayer: Any? = null
+        var bestArea = 0
+
+        synchronized(viewToWaPlayer) {
+            for ((view, player) in viewToWaPlayer) {
+                if (!view.isAttachedToWindow || view.visibility != View.VISIBLE) continue
+                if (view.rootView !== decor) continue
+                if (!view.getGlobalVisibleRect(rect)) continue
+                val area = rect.width() * rect.height()
+                if (area > bestArea) {
+                    bestArea = area
+                    bestPlayer = player
+                }
             }
         }
-        walk(root)
-        return found.sortedByDescending { it.second }.map { it.first }
-    }
+        if (bestPlayer != null) return bestPlayer
 
-    private fun extractHeroFromObject(obj: Any?, visited: MutableSet<Any>, depth: Int): Any? {
-        if (obj == null || depth > 3) return null
-        if (!visited.add(obj)) return null
-        if (isHeroInstance(obj)) return obj
-
-        val clsName = obj.javaClass.name
-        if (clsName.startsWith("java.") || clsName.startsWith("javax.") ||
-            clsName.startsWith("kotlin.") || clsName.startsWith("android.graphics.") ||
-            clsName.startsWith("android.content.") || clsName.startsWith("android.os.")
-        ) return null
-
-        var cls: Class<*>? = obj.javaClass
-        var hops = 0
-        while (cls != null && cls != Any::class.java && hops < 4) {
-            val fields = runCatching { cls.declaredFields }.getOrNull() ?: break
-            for (f in fields) {
-                val ft = f.type
-                if (ft.isPrimitive || ft == String::class.java || ft.isArray) continue
-                val value = runCatching {
-                    f.isAccessible = true
-                    f.get(obj)
-                }.getOrNull() ?: continue
-                if (isHeroInstance(value)) return value
-                if (isWaHeroInstance(value)) {
-                    extractHeroFromObject(value, visited, depth + 1)?.let { return it }
+        synchronized(waTrackers) {
+            val bestInWindow = waTrackers.entries
+                .sortedByDescending { it.value.lastStartMs }
+                .firstOrNull { (player, _) ->
+                    val v = runCatching { waGetViewMethod?.invoke(player) as? View }.getOrNull()
+                    v != null && v.isAttachedToWindow && v.rootView === decor
                 }
-                if (depth < 2 && shouldDescendForHero(value.javaClass.name, f.name)) {
-                    extractHeroFromObject(value, visited, depth + 1)?.let { return it }
-                }
-            }
-            cls = cls.superclass
-            hops++
+                ?.key
+            if (bestInWindow != null) return bestInWindow
+        }
+
+        val last = lastWaPlayer?.get()
+        if (last != null) {
+            val dur = runCatching { (waGetDurMethod?.invoke(last) as? Number)?.toInt() ?: 0 }.getOrDefault(0)
+            val pos = runCatching { (waGetPosMethod?.invoke(last) as? Number)?.toInt() ?: 0 }.getOrDefault(0)
+            if (dur > 0 || pos > 0) return last
         }
         return null
     }
 
-    private fun shouldDescendForHero(className: String, fieldName: String): Boolean {
-        val c = className.lowercase(Locale.ROOT)
-        val fn = fieldName.lowercase(Locale.ROOT)
-        return c.contains("hero") || c.contains("video") || c.contains("player") ||
-            c.contains("status") || fn.contains("player") || fn.contains("hero") || fn.contains("video")
-    }
-
     private fun findActivePlayer(activity: Activity): PlayerHandle? {
-        val content = activity.findViewById<ViewGroup>(android.R.id.content)
-
-        if (content != null) {
-            val heroViews = findVisibleHeroViews(content)
-            for (hv in heroViews) {
-                val mapped = viewToPlayer[hv]
-                if (mapped != null) {
-                    lastHeroPlayer = WeakReference(mapped)
-                    return wrapHeroPlayer(mapped)
-                }
-                val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
-                val extracted = extractHeroFromObject(hv, visited, 0)
-                if (extracted != null) {
-                    viewToPlayer[hv] = extracted
-                    lastHeroPlayer = WeakReference(extracted)
-                    return wrapHeroPlayer(extracted)
-                }
-            }
-        }
-
-        findLiveHeroPlayer()?.let { hero ->
-            return wrapHeroPlayer(hero)
+        findVisibleWaPlayer(activity)?.let { waPlayer ->
+            stateOf(activity).boundPlayerRef = WeakReference(waPlayer)
+            return wrapWaPlayer(waPlayer)
         }
 
         val mp = lastMediaPlayer?.get()
@@ -758,35 +629,12 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
             if (alive) return wrapMediaPlayer(mp)
         }
 
+        val content = activity.findViewById<ViewGroup>(android.R.id.content)
         if (content != null) {
             findVideoView(content)?.let { vv ->
                 return wrapVideoView(vv)
             }
         }
-
-        val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
-        val roots = mutableListOf<Any>()
-        runCatching {
-            val fm = activity.javaClass.getMethod("getSupportFragmentManager").invoke(activity)
-            val list = fm?.javaClass?.getMethod("getFragments")?.invoke(fm) as? List<*>
-            list?.forEach { frag ->
-                if (frag != null) {
-                    val isResumed = runCatching {
-                        frag.javaClass.getMethod("isResumed").invoke(frag) as? Boolean
-                    }.getOrDefault(false)
-                    if (isResumed == true) roots.add(0, frag) else roots.add(frag)
-                }
-            }
-        }
-        roots.add(activity)
-        for (r in roots) {
-            val extracted = extractHeroFromObject(r, visited, 0)
-            if (extracted != null) {
-                lastHeroPlayer = WeakReference(extracted)
-                return wrapHeroPlayer(extracted)
-            }
-        }
-
         return null
     }
 
@@ -800,103 +648,76 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
         return null
     }
 
-    private fun resolveHeroPosMs(player: Any, tracker: HeroTracker): Long {
-        val est = tracker.estimatePosMs()
-        heroGetPosMethod?.let { m ->
-            val v = runCatching { (m.invoke(player) as? Number)?.toLong() }.getOrNull()
-            if (v != null && v in 0L..600_000L) return v
-        }
-        val discovered = runCatching {
-            player.javaClass.methods.firstOrNull { m ->
-                if (m.parameterTypes.isNotEmpty() || m.returnType != Long::class.javaPrimitiveType) return@firstOrNull false
-                if (m.declaringClass == Any::class.java) return@firstOrNull false
-                val v = runCatching { m.invoke(player) as? Long }.getOrNull() ?: return@firstOrNull false
-                v in 250L..180_000L && abs(v - est) <= 5000L
-            }
-        }.getOrNull()
-        if (discovered != null) {
-            heroGetPosMethod = discovered.apply { isAccessible = true }
-            val v = runCatching { discovered.invoke(player) as? Long }.getOrNull()
-            if (v != null && v >= 0L) return v
-        }
-        return est
-    }
-
-    private fun resolveHeroIsPlaying(player: Any, tracker: HeroTracker): Boolean {
-        heroIsPlayingMethod?.let { m ->
-            val v = runCatching { m.invoke(player) as? Boolean }.getOrNull()
-            if (v != null) return v
-        }
-        return !tracker.paused
-    }
-
-    private fun wrapHeroPlayer(player: Any): PlayerHandle = object : PlayerHandle {
-        override fun seekBy(deltaMs: Long): Boolean {
-            val seekM = heroSeekMethod ?: return false
-            val trk = trackerOf(player)
-            val cur = resolveHeroPosMs(player, trk)
-            val target = (cur + deltaMs).coerceAtLeast(0L)
-            val ok = runCatching {
-                val pts = seekM.parameterTypes
-                when (pts.size) {
-                    1 -> {
-                        if (pts[0] == Int::class.javaPrimitiveType) seekM.invoke(player, target.toInt())
-                        else seekM.invoke(player, target)
-                    }
-                    2 -> {
-                        val first: Any = if (pts[0] == Int::class.javaPrimitiveType) target.toInt() else target
-                        val second: Any = when (pts[1]) {
-                            Boolean::class.javaPrimitiveType -> false
-                            Int::class.javaPrimitiveType -> 0
-                            Long::class.javaPrimitiveType -> 0L
-                            else -> false
-                        }
-                        seekM.invoke(player, first, second)
-                    }
-                    3 -> {
-                        val first: Any = if (pts[0] == Int::class.javaPrimitiveType) target.toInt() else target
-                        seekM.invoke(player, first, false, false)
-                    }
-                    else -> return@runCatching false
+    private fun findInnerTarget(
+        root: Any,
+        targetClass: Class<*>,
+        visited: MutableSet<Any>,
+        depth: Int
+    ): Any? {
+        if (depth > 2 || !visited.add(root)) return null
+        if (targetClass.isInstance(root)) return root
+        var cls: Class<*>? = root.javaClass
+        var hops = 0
+        while (cls != null && cls != Any::class.java && hops < 3) {
+            val fields = runCatching { cls.declaredFields }.getOrNull() ?: break
+            for (f in fields) {
+                val ft = f.type
+                if (ft.isPrimitive || ft == String::class.java || ft.isArray) continue
+                val v = runCatching {
+                    f.isAccessible = true
+                    f.get(root)
+                }.getOrNull() ?: continue
+                if (targetClass.isInstance(v)) return v
+                if (depth < 2) {
+                    findInnerTarget(v, targetClass, visited, depth + 1)?.let { return it }
                 }
+            }
+            cls = cls.superclass
+            hops++
+        }
+        return null
+    }
+
+    private fun wrapWaPlayer(player: Any): PlayerHandle = object : PlayerHandle {
+        override fun seekBy(deltaMs: Long): Boolean {
+            val seekM = waSeekMethod ?: return false
+            val posM = waGetPosMethod ?: return false
+            return runCatching {
+                val cur = (posM.invoke(player) as? Number)?.toInt() ?: 0
+                val dur = (waGetDurMethod?.invoke(player) as? Number)?.toInt()
+                    ?.takeIf { it > 0 } ?: Int.MAX_VALUE
+                val target = (cur + deltaMs.toInt()).coerceIn(0, dur)
+                seekM.invoke(player, target)
                 true
             }.getOrDefault(false)
-            if (ok) {
-                trk.basePosMs = target
-                trk.playStartMs = SystemClock.uptimeMillis()
-            }
-            return ok
         }
 
         override fun togglePause(): Boolean? {
-            val playM = heroPlayMethod
-            val pauseM = heroPauseMethod
-            if (playM == null || pauseM == null) return null
+            val startM = waStartMethod ?: return null
+            val pauseM = waPauseMethod ?: return null
             val trk = trackerOf(player)
-            val playing = resolveHeroIsPlaying(player, trk)
+            val playing = runCatching {
+                waIsPlayingMethod?.invoke(player) as? Boolean
+            }.getOrNull() ?: !trk.paused
             return runCatching {
                 if (playing) {
-                    trk.basePosMs = resolveHeroPosMs(player, trk)
                     pauseM.invoke(player)
                     trk.paused = true
                     true
                 } else {
-                    playM.invoke(player)
+                    startM.invoke(player)
                     trk.paused = false
-                    trk.playStartMs = SystemClock.uptimeMillis()
                     false
                 }
             }.getOrNull()
         }
 
         override fun setSpeed(speed: Float): Boolean {
-            val speedM = heroSpeedMethod ?: return false
-            val trk = trackerOf(player)
+            val speedM = innerSpeedMethod ?: return false
+            val visited = Collections.newSetFromMap(IdentityHashMap<Any, Boolean>())
+            val target = findInnerTarget(player, speedM.declaringClass, visited, 0) ?: return false
             return runCatching {
-                trk.basePosMs = resolveHeroPosMs(player, trk)
-                trk.playStartMs = SystemClock.uptimeMillis()
-                speedM.invoke(player, speed)
-                trk.speed = speed
+                speedM.invoke(target, speed)
                 true
             }.getOrDefault(false)
         }
@@ -1075,9 +896,7 @@ class StatusPlaybackControls(loader: ClassLoader, preferences: SharedPreferences
 
     companion object {
         private const val PILL_TAG = "wp_status_playback_pill"
-        private const val HERO_PLAYER_NAME = "com.facebook.video.heroplayer.client.HeroPlayer"
         private const val WA_HERO_PLAYER_NAME = "com.whatsapp.videoplayback.WaFbHeroPlayer"
-        private const val HERO_VIEW_NAME = "com.whatsapp.videoplayback.FbHeroPlayerView"
         private val SPEEDS = floatArrayOf(1f, 1.5f, 2f, 0.5f)
         private val SPEED_LABELS = arrayOf("1x", "1.5x", "2x", "0.5x")
         private val OVERLAY_TOKENS = listOf(

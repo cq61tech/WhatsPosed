@@ -2365,6 +2365,48 @@ object Unobfuscator {
         }
     }.getOrNull()
 
+    fun loadHeroSetSpeedV3(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val waHeroCls = runCatching {
+                classLoader.loadClass("com.whatsapp.videoplayback.WaFbHeroPlayer")
+            }.getOrNull()
+            val waFieldTypes = waHeroCls?.declaredFields?.map { it.type.name }?.toSet().orEmpty()
+
+            val byString = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    addUsingString("setPlaybackSpeed", StringMatchType.Contains)
+                }
+            }
+            val inWaByString = byString.firstOrNull { it.declaredClassName in waFieldTypes }
+            if (inWaByString != null) return@getMethod inWaByString.getMethodInstance(classLoader)
+
+            val byCaller = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    callerMethods {
+                        add {
+                            addUsingString("FbHeroAudioPlayer/setPlaybackSpeed", StringMatchType.Contains)
+                        }
+                    }
+                }
+            }
+            val inWaByCaller = byCaller.firstOrNull { it.declaredClassName in waFieldTypes }
+            if (inWaByCaller != null) return@getMethod inWaByCaller.getMethodInstance(classLoader)
+
+            val callerNonAudio = byCaller.firstOrNull {
+                !it.declaredClassName.contains("Audio", ignoreCase = true)
+            }
+            if (callerNonAudio != null) return@getMethod callerNonAudio.getMethodInstance(classLoader)
+
+            val anyNonAudio = byString.firstOrNull {
+                !it.declaredClassName.contains("Audio", ignoreCase = true)
+            }
+            anyNonAudio?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("HeroSetSpeedV3 not found")
+        }
+    }.getOrNull()
+
     @Throws(Exception::class)
     @JvmStatic
     fun loadListUpdateItems(classLoader: ClassLoader): Method {
