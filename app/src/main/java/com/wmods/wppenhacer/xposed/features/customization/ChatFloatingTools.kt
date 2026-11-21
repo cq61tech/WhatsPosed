@@ -1171,8 +1171,7 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         )
 
         val separators = listOf(
-            (if (tr) "Alt satır" else "New line") to "
-",
+            (if (tr) "Alt satır" else "New line") to "\n",
             (if (tr) "Boşluk" else "Space") to " ",
             (if (tr) "Bitişik" else "None") to ""
         )
@@ -1339,11 +1338,9 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
             if (snippets.isEmpty()) {
                 val emptyView = TextView(activity).apply {
                     text = if (tr) {
-                        "Henüz şablon yok.
-Sağ üstteki + butonundan ekleyebilirsin."
+                        "Henüz şablon yok.\nSağ üstteki + butonundan ekleyebilirsin."
                     } else {
-                        "No snippets yet.
-Tap + above to save one."
+                        "No snippets yet.\nTap + above to save one."
                     }
                     setTextColor(palette.textSecondary)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
