@@ -125,7 +125,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             padVDp = xprefs.getInt("fbb_pad_v", 0),
             padHDp = xprefs.getInt("fbb_pad_h", 0),
             iconSizeDp = xprefs.getInt("fbb_icon_size", 0),
-            ovalIndicator = xprefs.getString("fbb_indicator", "default") == "oval",
+            ovalIndicator = isLiquid || xprefs.getString("fbb_indicator", "default") == "oval",
             indicatorColor = xprefs.getInt("fbb_indicator_color", 0),
             selectedColor = xprefs.getInt("fbb_icon_selected", 0),
             unselectedColor = xprefs.getInt("fbb_icon_unselected", 0),
@@ -382,7 +382,6 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                     bar = bar,
                     light = light,
                     tintColor = barColor or (0xFF shl 24),
-                    indicatorColor = style.indicatorColor,
                 )
             }
             controller.attach()
@@ -481,12 +480,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (style.hideLabels) {
             apiLabels = callApi(bar, "setLabelVisibilityMode", Int::class.javaPrimitiveType!!, 2)
         }
-        if (style.liquid) {
-            callApi(
-                bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
-                ColorStateList.valueOf(Color.TRANSPARENT),
-            )
-        } else if (style.indicatorColor != 0) {
+        if (style.indicatorColor != 0) {
             callApi(
                 bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
                 ColorStateList.valueOf(style.indicatorColor),
@@ -547,19 +541,13 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun styleIndicator(view: View, style: Style, light: Boolean) {
-        if (style.liquid) {
-            view.background = ColorDrawable(Color.TRANSPARENT)
-            view.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-            view.alpha = 0f
-            return
-        }
         if (style.ovalIndicator) {
             val fill = if (style.indicatorColor != 0) {
                 style.indicatorColor
             } else if (light) {
-                Color.argb(46, 0, 0, 0)
+                Color.argb(if (style.liquid) 30 else 46, 0, 0, 0)
             } else {
-                Color.argb(56, 255, 255, 255)
+                Color.argb(if (style.liquid) 42 else 56, 255, 255, 255)
             }
             if (view.background !is GradientDrawable) {
                 view.background = GradientDrawable().apply {
@@ -746,6 +734,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             container.animate().cancel()
             val overlay = liquid?.overlayView
             overlay?.animate()?.cancel()
+            if (value) {
+                liquid?.cancelDragImmediate()
+            }
             if (fade) {
                 if (!value) {
                     container.visibility = View.VISIBLE
@@ -838,6 +829,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             uniform float bezel;
             uniform float isDark;
             uniform float strength;
+            uniform float velTilt;
 
             float sdRoundedBox(float2 p, float2 b, float r) {
                 float2 q = abs(p) - b + float2(r);
@@ -850,7 +842,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 if (d > 2.0) {
                     return half4(0.0, 0.0, 0.0, 0.0);
                 }
-                float alpha = 1.0 - smoothstep(-1.0, 0.8, d);
+                float alpha = (1.0 - smoothstep(-1.0, 0.8, d)) * strength;
                 float edgeDist = max(-d, 0.0);
 
                 float2 grad = float2(
@@ -875,21 +867,21 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 half4 cB = content.eval(clamp(baseCoord + disp, lo, hi));
                 half3 rgb = half3(cR.r, cG.g, cB.b);
 
-                float2 light1 = normalize(float2(-0.38, -0.92));
-                float2 light2 = normalize(float2(0.38, 0.92));
-                float rimBand = 1.0 - smoothstep(0.0, max(bezel * 0.48, 2.0), edgeDist);
-                float spec1 = pow(max(dot(-n, light1), 0.0), 2.0) * rimBand;
-                float spec2 = pow(max(dot(-n, light2), 0.0), 2.8) * rimBand * 0.58;
-                float crispEdge = 1.0 - smoothstep(0.0, 2.5, edgeDist);
+                float2 light1 = normalize(float2(-0.34 + velTilt * 0.45, -0.94));
+                float2 light2 = normalize(float2(0.34 - velTilt * 0.45, 0.94));
+                float rimBand = 1.0 - smoothstep(0.0, max(bezel * 0.50, 2.0), edgeDist);
+                float spec1 = pow(max(dot(-n, light1), 0.0), 1.9) * rimBand;
+                float spec2 = pow(max(dot(-n, light2), 0.0), 2.5) * rimBand * 0.62;
+                float crispEdge = 1.0 - smoothstep(0.0, 2.6, edgeDist);
 
                 float normY = clamp((p.y + halfSize.y) / max(halfSize.y * 2.0, 1.0), 0.0, 1.0);
-                float topSheen = pow(1.0 - normY, 2.1) * (isDark > 0.5 ? 0.16 : 0.24) * strength;
+                float topSheen = pow(1.0 - normY, 2.2) * (isDark > 0.5 ? 0.14 : 0.22);
 
-                half3 tint = isDark > 0.5 ? half3(0.86, 0.94, 1.0) : half3(1.0, 1.0, 1.0);
-                float tintMix = (isDark > 0.5 ? 0.08 : 0.14) * (0.45 + 0.55 * strength);
+                half3 tint = isDark > 0.5 ? half3(0.88, 0.95, 1.0) : half3(1.0, 1.0, 1.0);
+                float tintMix = (isDark > 0.5 ? 0.06 : 0.12) * strength;
                 rgb = mix(rgb, tint, half(tintMix));
 
-                half h = half(spec1 * 0.62 + spec2 * 0.36 + crispEdge * (isDark > 0.5 ? 0.38 : 0.48) + topSheen);
+                half h = half((spec1 * 0.68 + spec2 * 0.40 + crispEdge * (isDark > 0.5 ? 0.42 : 0.52) + topSheen) * strength);
                 rgb = clamp(rgb + half3(h, h, h), half3(0.0, 0.0, 0.0), half3(1.0, 1.0, 1.0));
                 return half4(rgb * half(alpha), half(alpha));
             }
@@ -933,6 +925,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             density: Float,
             dark: Boolean,
             strength: Float,
+            velTilt: Float,
         ): Shader {
             val rs = shader as RuntimeShader
             rs.setInputShader("content", content)
@@ -940,12 +933,13 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             rs.setFloatUniform("halfSize", halfW, halfH)
             rs.setFloatUniform("radius", min(radius, min(halfW, halfH)))
             rs.setFloatUniform("texSize", texW, texH)
-            rs.setFloatUniform("refractPx", 18f * density)
-            rs.setFloatUniform("dispersion", 2.8f * density)
-            rs.setFloatUniform("magnify", 0.135f)
-            rs.setFloatUniform("bezel", 22f * density)
+            rs.setFloatUniform("refractPx", 22f * density)
+            rs.setFloatUniform("dispersion", 3.4f * density)
+            rs.setFloatUniform("magnify", 0.16f)
+            rs.setFloatUniform("bezel", 24f * density)
             rs.setFloatUniform("isDark", if (dark) 1f else 0f)
             rs.setFloatUniform("strength", strength)
+            rs.setFloatUniform("velTilt", velTilt.coerceIn(-1f, 1f))
             return rs
         }
     }
@@ -956,7 +950,6 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private val bar: ViewGroup,
         private val light: Boolean,
         private val tintColor: Int,
-        private val indicatorColor: Int,
     ) {
         private val handler = Handler(Looper.getMainLooper())
         private val touchSlop = ViewConfiguration.get(bar.context).scaledTouchSlop.toFloat()
@@ -976,7 +969,6 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             bar = bar,
             light = light,
             tintColor = tintColor,
-            indicatorColor = indicatorColor,
         )
 
         private val holdRunnable = Runnable {
@@ -993,9 +985,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 rootView.addView(
                     overlayView,
                     FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        Gravity.TOP or Gravity.START,
+                        Gravity.BOTTOM,
                     ),
                 )
             }
@@ -1007,6 +999,14 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             handler.removeCallbacks(holdRunnable)
             overlayView.stopAnimations()
             (overlayView.parent as? ViewGroup)?.removeView(overlayView)
+        }
+
+        fun cancelDragImmediate() {
+            handler.removeCallbacks(holdRunnable)
+            tracking = false
+            dragging = false
+            lastCallback = null
+            overlayView.hideImmediate()
         }
 
         fun syncLayout() {
@@ -1021,7 +1021,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
 
         fun onDispatchTouchEvent(ev: MotionEvent, original: Window.Callback): Boolean {
             if (dispatchingSynthetic) return false
-            if (!bar.isAttachedToWindow || bar.visibility != View.VISIBLE || container.visibility != View.VISIBLE) {
+            if (!bar.isAttachedToWindow || bar.visibility != View.VISIBLE ||
+                container.visibility != View.VISIBLE || container.translationY > 12f
+            ) {
                 return false
             }
 
@@ -1038,7 +1040,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                         cachedTabs = findTabViews(bar)
                         if (cachedTabs.size >= 2) {
                             overlayView.syncBounds(cachedTabs, findSelectedIndex(cachedTabs))
-                            handler.postDelayed(holdRunnable, 130L)
+                            handler.postDelayed(holdRunnable, 115L)
                         } else {
                             tracking = false
                         }
@@ -1057,7 +1059,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                             tracking = false
                             return false
                         }
-                        if (abs(dx) > touchSlop * 0.55f && abs(dx) > abs(dy)) {
+                        if (abs(dx) > touchSlop * 0.50f && abs(dx) > abs(dy)) {
                             handler.removeCallbacks(holdRunnable)
                             enterDragMode(ev.rawX, original)
                         }
@@ -1090,16 +1092,11 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                             bar.postDelayed({
                                 val tabs = findTabViews(bar)
                                 cachedTabs = tabs
-                                overlayView.syncToTabIndex(findSelectedIndex(tabs), animate = true)
-                            }, 90L)
+                                overlayView.syncBounds(tabs, findSelectedIndex(tabs))
+                            }, 85L)
                         }
                         return true
                     }
-                    bar.postDelayed({
-                        val tabs = findTabViews(bar)
-                        cachedTabs = tabs
-                        overlayView.syncToTabIndex(findSelectedIndex(tabs), animate = true)
-                    }, 50L)
                     return false
                 }
             }
@@ -1199,19 +1196,18 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private val bar: ViewGroup,
         private val light: Boolean,
         private val tintColor: Int,
-        private val indicatorColor: Int,
     ) : View(context) {
 
         private val density = context.resources.displayMetrics.density
-        private val padH = (22f * density).toInt()
-        private val padV = (24f * density).toInt()
+        private val padV = (26f * density).toInt()
 
-        private val barScreenLoc = IntArray(2)
-        private val rootScreenLoc = IntArray(2)
+        private val barWinLoc = IntArray(2)
+        private val overlayWinLoc = IntArray(2)
+        private val rootWinLoc = IntArray(2)
         private val tabCenters = mutableListOf<Float>()
         private val tabWidths = mutableListOf<Float>()
         private var tabHeight = 0f
-        private var selectedIndex = 0
+        private var barCenterY = 0f
         private var initialized = false
 
         private var curX = 0f
@@ -1228,14 +1224,14 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
 
         private var stretch = 0f
         private var velStretch = 0f
+        private var tilt = 0f
+        private var lastPointerX = 0f
+        private var lastPointerTimeMs = 0L
+        private var pointerVelX = 0f
 
         private var isDragging = false
         private var animating = false
         private var lastFrameNanos = 0L
-        private var lastCaptureMs = 0L
-
-        private var overlayLeftInRoot = 0f
-        private var overlayTopInRoot = 0f
 
         private var snapshotBmp: Bitmap? = null
         private var snapshotShader: BitmapShader? = null
@@ -1243,10 +1239,10 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         private var agslShader: Any? = null
 
         private val lensPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        private val restFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val restStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        private val fallbackFillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val fallbackStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.2f * density
+            strokeWidth = 1.4f * density
         }
         private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val drawRect = RectF()
@@ -1267,40 +1263,59 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             removeCallbacks(frameRunner)
         }
 
+        fun hideImmediate() {
+            isDragging = false
+            targetDrag = 0f
+            dragProgress = 0f
+            velDrag = 0f
+            stretch = 0f
+            velStretch = 0f
+            tilt = 0f
+            animating = false
+            removeCallbacks(frameRunner)
+            invalidate()
+        }
+
         fun syncBounds(tabs: List<View>, activeIdx: Int) {
             if (bar.width <= 0 || bar.height <= 0) return
-            bar.getLocationInWindow(barScreenLoc)
-            rootView.getLocationInWindow(rootScreenLoc)
 
-            val barLeftInRoot = (barScreenLoc[0] - rootScreenLoc[0]).toFloat()
-            val barTopInRoot = (barScreenLoc[1] - rootScreenLoc[1]).toFloat()
-            overlayLeftInRoot = barLeftInRoot - padH
-            overlayTopInRoot = barTopInRoot - padV
-
-            val desiredW = bar.width + padH * 2
+            val containerMargin = (container.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
             val desiredH = bar.height + padV * 2
+            val desiredBottom = containerMargin - padV
+
             val lp = layoutParams as? FrameLayout.LayoutParams
-            if (lp != null && (lp.width != desiredW || lp.height != desiredH)) {
-                lp.width = desiredW
+            if (lp != null && (lp.gravity != Gravity.BOTTOM ||
+                    lp.width != FrameLayout.LayoutParams.MATCH_PARENT ||
+                    lp.height != desiredH ||
+                    lp.bottomMargin != desiredBottom)
+            ) {
+                lp.gravity = Gravity.BOTTOM
+                lp.width = FrameLayout.LayoutParams.MATCH_PARENT
                 lp.height = desiredH
+                lp.bottomMargin = desiredBottom
                 layoutParams = lp
             }
-            x = overlayLeftInRoot
-            y = overlayTopInRoot
+            if (abs(translationY - container.translationY) > 0.5f && !isDragging) {
+                translationY = container.translationY
+            }
+
+            rootView.getLocationInWindow(rootWinLoc)
+            bar.getLocationInWindow(barWinLoc)
 
             tabCenters.clear()
             tabWidths.clear()
             val tabLoc = IntArray(2)
             for (t in tabs) {
                 t.getLocationInWindow(tabLoc)
-                val cx = (tabLoc[0] - barScreenLoc[0]) + t.width * 0.5f + padH
+                val cx = (tabLoc[0] - rootWinLoc[0]) + t.width * 0.5f
                 tabCenters.add(cx)
-                tabWidths.add(max(t.width * 0.86f, 56f * density))
+                val minPillW = bar.height * 1.18f
+                tabWidths.add(max(t.width * 0.94f, minPillW))
             }
-            tabHeight = max(bar.height - 10f * density, 44f * density)
+            tabHeight = max(bar.height * 0.80f, 44f * density)
+            barCenterY = desiredH * 0.5f
 
             val clampedIdx = activeIdx.coerceIn(0, (tabCenters.size - 1).coerceAtLeast(0))
-            selectedIndex = clampedIdx
             if (tabCenters.isNotEmpty()) {
                 if (!initialized) {
                     initialized = true
@@ -1308,41 +1323,23 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                     targetX = curX
                     curW = tabWidths[clampedIdx]
                     targetW = curW
-                } else if (!isDragging) {
-                    targetX = tabCenters[clampedIdx]
-                    targetW = tabWidths[clampedIdx]
-                    startPhysics()
+                } else if (!isDragging && dragProgress <= 0.01f) {
+                    curX = tabCenters[clampedIdx]
+                    targetX = curX
+                    curW = tabWidths[clampedIdx]
+                    targetW = curW
                 }
-            }
-            invalidate()
-        }
-
-        fun syncToTabIndex(index: Int, animate: Boolean) {
-            if (tabCenters.isEmpty()) return
-            val clamped = index.coerceIn(0, tabCenters.lastIndex)
-            selectedIndex = clamped
-            targetX = tabCenters[clamped]
-            targetW = tabWidths[clamped]
-            if (!animate) {
-                curX = targetX
-                curW = targetW
-                velX = 0f
-                velW = 0f
-                invalidate()
-            } else {
-                startPhysics()
             }
         }
 
         private fun rawXToLocal(rawX: Float): Float {
-            bar.getLocationOnScreen(barScreenLoc)
-            val localInBar = rawX - barScreenLoc[0]
-            val minX = if (tabCenters.isNotEmpty()) tabCenters.first() else padH + 36f * density
-            val maxX = if (tabCenters.isNotEmpty()) tabCenters.last() else padH + bar.width - 36f * density
-            val desired = localInBar + padH
+            getLocationOnScreen(overlayWinLoc)
+            val desired = rawX - overlayWinLoc[0]
+            val minX = if (tabCenters.isNotEmpty()) tabCenters.first() else 48f * density
+            val maxX = if (tabCenters.isNotEmpty()) tabCenters.last() else (width - 48f * density)
             return when {
-                desired < minX -> minX - (minX - desired) * 0.25f
-                desired > maxX -> maxX + (desired - maxX) * 0.25f
+                desired < minX -> minX - (minX - desired) * 0.22f
+                desired > maxX -> maxX + (desired - maxX) * 0.22f
                 else -> desired
             }
         }
@@ -1363,23 +1360,39 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
 
         fun onDragStart(rawX: Float): Int {
             isDragging = true
+            val localX = rawXToLocal(rawX)
+            val idx = nearestTabIndex(localX)
+            curX = localX
+            targetX = localX
+            velX = 0f
+            if (idx in tabWidths.indices) {
+                curW = tabWidths[idx]
+                targetW = tabWidths[idx]
+            }
+            velW = 0f
+            stretch = -0.08f
+            velStretch = 1.6f
+            pointerVelX = 0f
+            lastPointerX = localX
+            lastPointerTimeMs = SystemClock.uptimeMillis()
             targetDrag = 1f
-            targetX = rawXToLocal(rawX)
-            val idx = nearestTabIndex(targetX)
-            if (idx in tabWidths.indices) targetW = tabWidths[idx]
             captureSnapshot()
             startPhysics()
             return idx
         }
 
         fun onDragMove(rawX: Float): Int {
-            targetX = rawXToLocal(rawX)
-            val idx = nearestTabIndex(targetX)
+            val localX = rawXToLocal(rawX)
+            val nowMs = SystemClock.uptimeMillis()
+            val dtSec = ((nowMs - lastPointerTimeMs).coerceAtLeast(4L)) / 1000f
+            val instVel = ((localX - lastPointerX) / dtSec).coerceIn(-6000f * density, 6000f * density)
+            pointerVelX = pointerVelX * 0.45f + instVel * 0.55f
+            lastPointerX = localX
+            lastPointerTimeMs = nowMs
+
+            targetX = localX
+            val idx = nearestTabIndex(localX)
             if (idx in tabWidths.indices) targetW = tabWidths[idx]
-            val now = SystemClock.uptimeMillis()
-            if (now - lastCaptureMs > 95L) {
-                captureSnapshot()
-            }
             startPhysics()
             return idx
         }
@@ -1387,13 +1400,13 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         fun onDragEnd(rawX: Float): Int {
             isDragging = false
             targetDrag = 0f
-            val projected = rawXToLocal(rawX) + velX * 0.055f
+            val projected = rawXToLocal(rawX) + (velX * 0.045f)
             val idx = nearestTabIndex(projected)
-            selectedIndex = idx
             if (idx in tabCenters.indices) {
                 targetX = tabCenters[idx]
                 targetW = tabWidths[idx]
             }
+            pointerVelX = 0f
             startPhysics()
             return idx
         }
@@ -1414,43 +1427,52 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             val dt = ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0.004f, 0.032f)
             lastFrameNanos = now
 
-            val xStiff = if (isDragging) 520f else 310f
-            val xDamp = if (isDragging) 34f else 21f
+            pointerVelX *= 0.86f
+
+            val xStiff = if (isDragging) 340f else 280f
+            val xDamp = if (isDragging) 21f else 19f
             val ax = (targetX - curX) * xStiff - velX * xDamp
             velX += ax * dt
             curX += velX * dt
 
-            val aw = (targetW - curW) * 340f - velW * 25f
+            val aw = (targetW - curW) * 320f - velW * 22f
             velW += aw * dt
             curW += velW * dt
 
-            val ad = (targetDrag - dragProgress) * 380f - velDrag * 24f
+            val dStiff = if (isDragging) 420f else 320f
+            val dDamp = if (isDragging) 22f else 24f
+            val ad = (targetDrag - dragProgress) * dStiff - velDrag * dDamp
             velDrag += ad * dt
-            dragProgress = (dragProgress + velDrag * dt).coerceIn(0f, 1.15f)
+            dragProgress = (dragProgress + velDrag * dt).coerceIn(0f, 1.18f)
 
-            val speedNorm = (abs(velX) / (density * 1500f)).coerceIn(0f, 1f)
-            val targetStretch = speedNorm * 0.16f * dragProgress.coerceIn(0f, 1f)
-            val asq = (targetStretch - stretch) * 260f - velStretch * 20f
+            val combinedVel = if (isDragging) {
+                if (abs(pointerVelX) > abs(velX)) pointerVelX else velX
+            } else {
+                velX
+            }
+            val speedNorm = (abs(combinedVel) / (density * 620f)).coerceIn(0f, 1f)
+            val targetStretch = speedNorm * 0.42f * dragProgress.coerceIn(0f, 1f)
+            val asq = (targetStretch - stretch) * 230f - velStretch * 12f
             velStretch += asq * dt
-            stretch = (stretch + velStretch * dt).coerceIn(-0.04f, 0.18f)
+            stretch = (stretch + velStretch * dt).coerceIn(-0.14f, 0.48f)
+
+            val targetTilt = (combinedVel / (density * 700f)).coerceIn(-1f, 1f)
+            tilt += (targetTilt - tilt) * (dt * 14f).coerceAtMost(1f)
 
             invalidate()
 
             val settled = !isDragging &&
-                abs(targetX - curX) < 0.35f && abs(velX) < 1.5f &&
-                abs(targetW - curW) < 0.35f && abs(velW) < 1.5f &&
-                abs(targetDrag - dragProgress) < 0.005f && abs(velDrag) < 0.04f &&
-                abs(stretch) < 0.004f
+                dragProgress <= 0.008f && abs(velDrag) < 0.05f &&
+                abs(stretch) < 0.008f && abs(velStretch) < 0.05f
 
             if (settled) {
-                curX = targetX
-                curW = targetW
-                dragProgress = targetDrag
+                dragProgress = 0f
+                velDrag = 0f
                 stretch = 0f
+                velStretch = 0f
                 velX = 0f
                 velW = 0f
-                velDrag = 0f
-                velStretch = 0f
+                tilt = 0f
                 animating = false
                 invalidate()
             } else {
@@ -1463,17 +1485,20 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                 val w = width
                 val h = height
                 if (w <= 0 || h <= 0 || !isAttachedToWindow) return
-                lastCaptureMs = SystemClock.uptimeMillis()
-                val scale = 2
-                val sw = (w / scale).coerceAtLeast(4)
-                val sh = (h / scale).coerceAtLeast(4)
-                val bmp = snapshotBmp?.takeIf { it.width == sw && it.height == sh }
-                    ?: Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888).also { snapshotBmp = it }
+                val bmp = snapshotBmp?.takeIf { it.width == w && it.height == h }
+                    ?: Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { snapshotBmp = it }
                 val c = Canvas(bmp)
                 c.drawColor(tintColor)
+
+                getLocationInWindow(overlayWinLoc)
+                rootView.getLocationInWindow(rootWinLoc)
+                bar.getLocationInWindow(barWinLoc)
+
+                val rootDx = (rootWinLoc[0] - overlayWinLoc[0]).toFloat()
+                val rootDy = (rootWinLoc[1] - overlayWinLoc[1]).toFloat()
+
                 c.save()
-                c.scale(1f / scale, 1f / scale)
-                c.translate(-overlayLeftInRoot, -overlayTopInRoot)
+                c.translate(rootDx, rootDy)
                 for (i in 0 until rootView.childCount) {
                     val child = rootView.getChildAt(i)
                     if (child === this || child === container || child.visibility != View.VISIBLE) continue
@@ -1485,16 +1510,18 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                     }
                     c.restore()
                 }
-                if (container.visibility == View.VISIBLE) {
-                    c.save()
-                    c.translate(container.left + container.translationX, container.top + container.translationY)
-                    try {
-                        container.draw(c)
-                    } catch (_: Throwable) {
-                    }
-                    c.restore()
+                c.restore()
+
+                val barDx = (barWinLoc[0] - overlayWinLoc[0]).toFloat()
+                val barDy = (barWinLoc[1] - overlayWinLoc[1]).toFloat()
+                c.save()
+                c.translate(barDx, barDy)
+                try {
+                    bar.draw(c)
+                } catch (_: Throwable) {
                 }
                 c.restore()
+
                 snapshotShader = BitmapShader(bmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             } catch (_: Throwable) {
             }
@@ -1502,34 +1529,39 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            if (!initialized || width <= 0 || height <= 0 || curW <= 0f) return
+            val p = dragProgress.coerceIn(0f, 1.18f)
+            if (!initialized || width <= 0 || height <= 0 || curW <= 0f || p <= 0.008f) return
 
-            val p = dragProgress.coerceIn(0f, 1.15f)
-            val cy = height * 0.5f
-            val baseW = curW
-            val baseH = tabHeight
+            val alphaStrength = p.coerceIn(0f, 1f)
+            val popScale = 0.78f + 0.22f * p
+            val cy = if (barCenterY > 0f) barCenterY else height * 0.5f
 
-            val w = baseW * (1f + 0.16f * p + stretch)
-            val h = baseH * (1f + 0.24f * p - stretch * 0.5f)
+            val w = curW * popScale * (1.06f + stretch)
+            val h = tabHeight * popScale * (1.20f - stretch * 0.52f).coerceAtLeast(0.76f)
             val halfW = w * 0.5f
             val halfH = h * 0.5f
             val radius = halfH
 
             drawRect.set(curX - halfW, cy - halfH, curX + halfW, cy + halfH)
 
-            if (p > 0.02f) {
-                shadowPaint.color = Color.argb((54 * p.coerceAtMost(1f)).toInt(), 0, 0, 0)
-                shadowPaint.setShadowLayer(14f * density * p, 0f, 4f * density * p, Color.argb(90, 0, 0, 0))
-                canvas.drawRoundRect(drawRect, radius, radius, shadowPaint)
-            }
+            shadowPaint.color = Color.argb((42 * alphaStrength).toInt(), 0, 0, 0)
+            shadowPaint.setShadowLayer(
+                14f * density * alphaStrength,
+                0f,
+                4f * density * alphaStrength,
+                Color.argb((96 * alphaStrength).toInt(), 0, 0, 0),
+            )
+            canvas.drawRoundRect(drawRect, radius, radius, shadowPaint)
 
-            if (p > 0.03f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canvas.isHardwareAccelerated) {
                 val bmp = snapshotBmp
                 val bShader = snapshotShader
                 val rs = agslShader
                 if (bmp != null && bShader != null && rs != null) {
                     shaderMatrix.reset()
-                    shaderMatrix.setScale(width.toFloat() / bmp.width, height.toFloat() / bmp.height)
+                    if (bmp.width != width || bmp.height != height) {
+                        shaderMatrix.setScale(width.toFloat() / bmp.width, height.toFloat() / bmp.height)
+                    }
                     bShader.setLocalMatrix(shaderMatrix)
                     lensPaint.shader = LiquidAgsl.updateLensShader(
                         shader = rs,
@@ -1543,42 +1575,36 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
                         texH = height.toFloat(),
                         density = density,
                         dark = !light,
-                        strength = p.coerceIn(0f, 1f),
+                        strength = alphaStrength,
+                        velTilt = tilt,
                     )
-                    lensPaint.alpha = (255 * p.coerceIn(0f, 1f)).toInt()
+                    lensPaint.alpha = 255
                     canvas.drawRoundRect(drawRect, radius, radius, lensPaint)
+                    return
                 }
             }
 
-            val restFactor = (1f - p * 0.72f).coerceIn(0f, 1f)
-            if (restFactor > 0.01f) {
-                val baseFill = if (indicatorColor != 0) {
-                    val alpha = (Color.alpha(indicatorColor).coerceAtMost(96) * restFactor).toInt()
-                    (indicatorColor and 0x00FFFFFF) or (alpha shl 24)
-                } else if (light) {
-                    Color.argb((34 * restFactor).toInt(), 0, 0, 0)
-                } else {
-                    Color.argb((42 * restFactor).toInt(), 255, 255, 255)
-                }
-                restFillPaint.color = baseFill
-                canvas.drawRoundRect(drawRect, radius, radius, restFillPaint)
-
-                restStrokePaint.shader = LinearGradient(
-                    drawRect.left, drawRect.top, drawRect.left, drawRect.bottom,
-                    intArrayOf(
-                        Color.argb(((if (light) 130 else 155) * restFactor).toInt(), 255, 255, 255),
-                        Color.argb(((if (light) 28 else 36) * restFactor).toInt(), 255, 255, 255),
-                    ),
-                    null,
-                    Shader.TileMode.CLAMP,
-                )
-                val inset = restStrokePaint.strokeWidth * 0.5f
-                canvas.drawRoundRect(
-                    drawRect.left + inset, drawRect.top + inset,
-                    drawRect.right - inset, drawRect.bottom - inset,
-                    radius, radius, restStrokePaint,
-                )
+            fallbackFillPaint.color = if (light) {
+                Color.argb((54 * alphaStrength).toInt(), 255, 255, 255)
+            } else {
+                Color.argb((46 * alphaStrength).toInt(), 255, 255, 255)
             }
+            canvas.drawRoundRect(drawRect, radius, radius, fallbackFillPaint)
+            fallbackStrokePaint.shader = LinearGradient(
+                drawRect.left, drawRect.top, drawRect.left, drawRect.bottom,
+                intArrayOf(
+                    Color.argb((190 * alphaStrength).toInt(), 255, 255, 255),
+                    Color.argb((55 * alphaStrength).toInt(), 255, 255, 255),
+                ),
+                null,
+                Shader.TileMode.CLAMP,
+            )
+            val inset = fallbackStrokePaint.strokeWidth * 0.5f
+            canvas.drawRoundRect(
+                drawRect.left + inset, drawRect.top + inset,
+                drawRect.right - inset, drawRect.bottom - inset,
+                radius, radius, fallbackStrokePaint,
+            )
         }
     }
 
@@ -1767,12 +1793,16 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             if (rect.isEmpty) rect.set(bounds)
             val bmp = shown
             val sh = shader
+            val useAgsl = canvas.isHardwareAccelerated &&
+                liquidMode &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                dockShader != null
             if (bmp != null && sh != null) {
                 matrix.reset()
                 matrix.setScale(rect.width() / bmp.width, rect.height() / bmp.height)
                 matrix.postTranslate(rect.left, rect.top)
                 sh.setLocalMatrix(matrix)
-                if (liquidMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && dockShader != null) {
+                if (useAgsl) {
                     backdropPaint.shader = LiquidAgsl.updateDockShader(
                         shader = dockShader!!,
                         content = sh,
@@ -1788,7 +1818,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             }
             tintPaint.color = (tint and 0x00FFFFFF) or ((opacityPercent.coerceIn(0, 100) * 255 / 100) shl 24)
             canvas.drawRoundRect(rect, radius, radius, tintPaint)
-            if (!liquidMode || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (!useAgsl) {
                 canvas.drawRoundRect(rect, radius, radius, sheenPaint)
             }
             val inset = edgeWidth / 2f
