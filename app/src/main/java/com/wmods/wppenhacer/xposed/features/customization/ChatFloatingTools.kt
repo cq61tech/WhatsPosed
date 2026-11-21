@@ -2031,8 +2031,8 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
         val sizeRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
         val sizes = listOf(
             1 to (if (tr) "Kısa" else "Short"),
-            6 to (if (tr) "Orta" else "Medium"),
-            16 to (if (tr) "Uzun" else "Tall")
+            8 to (if (tr) "Orta" else "Medium"),
+            20 to (if (tr) "Uzun" else "Tall")
         )
         val sizeChips = mutableListOf<TextView>()
         sizes.forEachIndexed { idx, (lines, label) ->
@@ -2093,10 +2093,10 @@ class ChatFloatingTools(loader: ClassLoader, preferences: SharedPreferences) :
                     ).show()
                     null
                 } else {
-                    teaser + " " + "\u200E\u200B".repeat(2000) + "\n" + hidden
+                    teaser + " " + "\u3164".repeat(1050) + "\n" + hidden
                 }
             } else {
-                List(blankLines) { "\u2800" }.joinToString("\n")
+                List(blankLines) { "\u3164" }.joinToString("\n")
             }
         }
 

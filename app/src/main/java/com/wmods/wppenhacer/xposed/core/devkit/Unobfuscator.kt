@@ -2069,6 +2069,133 @@ object Unobfuscator {
         }
     }
 
+    fun loadHeroVideoSetSpeedMethod(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val preferred = bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    usingStrings("setPlaybackSpeed")
+                    callerMethods {
+                        add {
+                            usingStrings("FbHeroAudioPlayer/setPlaybackSpeed")
+                        }
+                    }
+                }
+            }.firstOrNull()
+            val target = preferred ?: bridge.findMethod {
+                matcher {
+                    paramTypes(Float::class.javaPrimitiveType)
+                    usingStrings("setPlaybackSpeed")
+                }
+            }.firstOrNull { !it.declaredClassName.contains("Audio", ignoreCase = true) }
+                ?: bridge.findMethod {
+                    matcher {
+                        paramTypes(Float::class.javaPrimitiveType)
+                        usingStrings("setPlaybackSpeed")
+                    }
+                }.firstOrNull()
+            target?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("HeroVideoSetSpeed not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoPlayMethod(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroClassName = loadHeroVideoSetSpeedMethod(classLoader)?.declaringClass?.name
+                ?: throw NoSuchMethodException("HeroPlayer class not found")
+            val candidates = bridge.findMethod {
+                matcher {
+                    usingStrings("play")
+                }
+            }.ifEmpty {
+                bridge.findMethod {
+                    matcher {
+                        addUsingString("play", StringMatchType.Contains)
+                    }
+                }
+            }
+            val match = candidates.mapNotNull { md ->
+                if (md.declaredClassName != heroClassName) null
+                else runCatching { md.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { m ->
+                m.parameterTypes.isEmpty() && m.returnType == Void.TYPE
+            }
+            match ?: throw NoSuchMethodException("HeroVideoPlay not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoPauseMethod(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroClassName = loadHeroVideoSetSpeedMethod(classLoader)?.declaringClass?.name
+                ?: throw NoSuchMethodException("HeroPlayer class not found")
+            val candidates = bridge.findMethod {
+                matcher {
+                    usingStrings("pause")
+                }
+            }.ifEmpty {
+                bridge.findMethod {
+                    matcher {
+                        addUsingString("pause", StringMatchType.Contains)
+                    }
+                }
+            }
+            val match = candidates.mapNotNull { md ->
+                if (md.declaredClassName != heroClassName) null
+                else runCatching { md.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { m ->
+                m.parameterTypes.isEmpty() && m.returnType == Void.TYPE
+            }
+            match ?: throw NoSuchMethodException("HeroVideoPause not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoSeekMethod(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroClassName = loadHeroVideoSetSpeedMethod(classLoader)?.declaringClass?.name
+                ?: throw NoSuchMethodException("HeroPlayer class not found")
+            val candidates = bridge.findMethod {
+                matcher {
+                    usingStrings("seekTo")
+                }
+            }.ifEmpty {
+                bridge.findMethod {
+                    matcher {
+                        addUsingString("seekTo", StringMatchType.Contains)
+                    }
+                }
+            }
+            val match = candidates.mapNotNull { md ->
+                if (md.declaredClassName != heroClassName) null
+                else runCatching { md.getMethodInstance(classLoader) }.getOrNull()
+            }.firstOrNull { m ->
+                m.parameterTypes.size in 1..3 &&
+                    (m.parameterTypes[0] == Int::class.javaPrimitiveType ||
+                        m.parameterTypes[0] == Long::class.javaPrimitiveType)
+            }
+            match ?: throw NoSuchMethodException("HeroVideoSeek not found")
+        }
+    }.getOrNull()
+
+    fun loadHeroVideoSetSurfaceMethod(classLoader: ClassLoader): Method? = runCatching {
+        UnobfuscatorCache.getInstance().getMethod(classLoader) {
+            val heroClassName = loadHeroVideoSetSpeedMethod(classLoader)?.declaringClass?.name
+                ?: throw NoSuchMethodException("HeroPlayer class not found")
+            val withString = bridge.findMethod {
+                matcher {
+                    paramTypes(android.view.Surface::class.java)
+                    addUsingString("setSurface", StringMatchType.Contains)
+                }
+            }.firstOrNull { it.declaredClassName == heroClassName }
+            val anySurface = withString ?: bridge.findMethod {
+                matcher {
+                    paramTypes(android.view.Surface::class.java)
+                }
+            }.firstOrNull { it.declaredClassName == heroClassName }
+            anySurface?.getMethodInstance(classLoader)
+                ?: throw NoSuchMethodException("HeroVideoSetSurface not found")
+        }
+    }.getOrNull()
+
     @Throws(Exception::class)
     @JvmStatic
     fun loadListUpdateItems(classLoader: ClassLoader): Method {
