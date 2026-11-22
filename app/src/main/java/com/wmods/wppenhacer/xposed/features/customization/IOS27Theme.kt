@@ -1,6 +1,10 @@
 package com.wmods.wppenhacer.xposed.features.customization
 
 import android.app.Activity
+import android.widget.PopupWindow
+import android.view.MenuItem
+import android.view.Menu
+import android.text.TextUtils
 import org.luckypray.dexkit.query.enums.StringMatchType
 import com.wmods.wppenhacer.xposed.core.devkit.Unobfuscator
 import com.wmods.wppenhacer.listeners.OnMultiClickListener
@@ -297,58 +301,43 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
             }
         }
 
-        // Style existing ActionMenuView icons into frosted circular pills and tuck away right vertical 3-dots
-        var overflowFallback: View? = null
+        // Organize ActionMenuView: keep Camera/Search on top-right, tuck extra tool icons into (...) Liquid Glass menu
         val actionMenu = findActionMenuView(toolbar)
         if (actionMenu != null) {
-            for (i in 0 until actionMenu.childCount) {
-                val item = actionMenu.getChildAt(i)
-                val cls = item.javaClass.name
-                val desc = item.contentDescription?.toString().orEmpty().lowercase()
-                val isOverflow = cls.contains("Overflow", ignoreCase = true) ||
-                    desc.contains("more") || desc.contains("diğer") || desc.contains("seçenek")
-                if (isOverflow) {
-                    overflowFallback = item
-                    item.alpha = 0f
-                    item.scaleX = 0.01f
-                    item.scaleY = 0.01f
-                    (item.layoutParams)?.let { lp ->
-                        lp.width = 1
-                        item.layoutParams = lp
+            organizeIosActionMenu(activity, toolbar, actionMenu, palette)
+            if (styledViews.add(actionMenu)) {
+                actionMenu.setOnHierarchyChangeListener(object : ViewGroup.OnHierarchyChangeListener {
+                    override fun onChildViewAdded(parent: View?, child: View?) {
+                        actionMenu.post {
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                organizeIosActionMenu(activity, toolbar, actionMenu, resolvePalette(activity, config))
+                            }
+                        }
                     }
-                } else if (item.visibility == View.VISIBLE) {
-                    styleIosCircleAction(item, palette, isGreen = false)
-                }
+                    override fun onChildViewRemoved(parent: View?, child: View?) = Unit
+                })
             }
         }
 
         val btnSize = dp(activity, 34f)
 
-        // Left circular (...) glass pill
-        if (toolbar.findViewWithTag<View>("wp_ios27_more_btn") == null) {
-            val moreBtn = ImageView(activity).apply {
-                tag = "wp_ios27_more_btn"
-                setImageDrawable(IosDotsDrawable(palette.textPrimary))
-                scaleType = ImageView.ScaleType.CENTER
-                contentDescription = "Menu"
-                background = makeCircleGlassDrawable(activity, palette, isGreen = false)
-                clipToOutline = true
-                setOnClickListener {
-                    val opened = runCatching {
-                        val m = toolbar.javaClass.getMethod("showOverflowMenu")
-                        (m.invoke(toolbar) as? Boolean) == true
-                    }.getOrDefault(false)
-                    if (!opened) {
-                        overflowFallback?.performClick()
-                    }
-                }
-            }
+        // Left circular (...) glass pill -> opens Liquid Glass menu with tucked icons + WhatsApp native overflow
+        val moreBtn = toolbar.findViewWithTag<ImageView>("wp_ios27_more_btn") ?: ImageView(activity).apply {
+            tag = "wp_ios27_more_btn"
+            scaleType = ImageView.ScaleType.CENTER
+            contentDescription = "Menu"
+            clipToOutline = true
             val lp = createToolbarLayoutParams(toolbar, btnSize, btnSize, Gravity.START or Gravity.CENTER_VERTICAL)
             (lp as? ViewGroup.MarginLayoutParams)?.let {
                 it.marginStart = dp(activity, 12f)
                 it.marginEnd = dp(activity, 6f)
             }
-            toolbar.addView(moreBtn, 0, lp)
+            toolbar.addView(this, 0, lp)
+        }
+        moreBtn.setImageDrawable(IosDotsDrawable(palette.textPrimary))
+        moreBtn.background = makeCircleGlassDrawable(activity, palette, isGreen = false)
+        moreBtn.setOnClickListener {
+            showIosMorePopup(activity, toolbar, moreBtn, resolvePalette(activity, config), config)
         }
 
         // Reserve clean right-edge slot in toolbar so ActionMenuView never overlaps the green (+) button
@@ -598,6 +587,354 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
             for (i in 0 until view.childCount) {
                 val found = extractFirstText(view.getChildAt(i))
                 if (!found.isNullOrBlank()) return found
+            }
+        }
+        return null
+    }
+
+    private data class TuckedMenuEntry(
+        val view: View,
+        val menuItem: MenuItem?,
+        val title: String,
+        val icon: Drawable?,
+    )
+
+    private fun organizeIosActionMenu(
+        activity: Activity,
+        toolbar: ViewGroup,
+        actionMenu: ViewGroup,
+        palette: IosPalette
+    ) {
+        for (i in 0 until actionMenu.childCount) {
+            val item = actionMenu.getChildAt(i)
+            val menuItem = extractMenuItem(item) ?: findMenuItemByActionView(toolbar, item)
+            val isOverflow = isOverflowMenuChild(item, menuItem, i, actionMenu.childCount)
+            if (isOverflow) {
+                item.tag = "wp_ios27_overflow_proxy"
+                item.visibility = View.VISIBLE
+                item.alpha = 0f
+                item.scaleX = 0.01f
+                item.scaleY = 0.01f
+                item.layoutParams?.let { lp ->
+                    if (lp.width != 1) {
+                        lp.width = 1
+                        item.layoutParams = lp
+                    }
+                }
+                continue
+            }
+
+            if (isKeepOnTopRightAction(item, menuItem)) {
+                if (item.visibility == View.VISIBLE) {
+                    styleIosCircleAction(item, palette, isGreen = false)
+                }
+                continue
+            }
+
+            // Tuck extra visible toolbar icons (trash, restart, ghost, eye, etc.) into the (...) popup menu
+            if (item.visibility == View.VISIBLE || item.tag == "wp_ios27_tucked_item") {
+                item.tag = "wp_ios27_tucked_item"
+                item.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun isOverflowMenuChild(view: View, menuItem: MenuItem?, index: Int, count: Int): Boolean {
+        val cls = view.javaClass.name
+        if (cls.contains("Overflow", ignoreCase = true)) return true
+        val desc = view.contentDescription?.toString().orEmpty().lowercase()
+        if (desc.contains("more option") || desc.contains("diğer") || desc.contains("seçenek") || desc.contains("overflow")) {
+            return true
+        }
+        return menuItem == null && index == count - 1 && !isKeepOnTopRightAction(view, null)
+    }
+
+    private fun isKeepOnTopRightAction(view: View, menuItem: MenuItem?): Boolean {
+        val entry = getEntryName(view).lowercase()
+        val desc = view.contentDescription?.toString().orEmpty().lowercase()
+        val tooltip = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.tooltipText?.toString().orEmpty().lowercase()
+        } else ""
+        val title = menuItem?.title?.toString().orEmpty().lowercase()
+        val camId = Utils.getID("menuitem_camera", "id")
+        if (camId > 0 && (view.id == camId || menuItem?.itemId == camId)) return true
+        val combined = "$entry $desc $tooltip $title"
+        return combined.contains("camera") || combined.contains("kamera") ||
+            combined.contains("caméra") || combined.contains("cámara") ||
+            entry.contains("menuitem_search")
+    }
+
+    private fun collectTuckedEntries(activity: Activity, toolbar: ViewGroup): List<TuckedMenuEntry> {
+        val actionMenu = findActionMenuView(toolbar) ?: return emptyList()
+        val out = mutableListOf<TuckedMenuEntry>()
+        for (i in 0 until actionMenu.childCount) {
+            val item = actionMenu.getChildAt(i)
+            if (item.tag != "wp_ios27_tucked_item") continue
+            val menuItem = extractMenuItem(item) ?: findMenuItemByActionView(toolbar, item)
+            val title = extractMenuTitle(item, menuItem, out.size)
+            val icon = extractMenuIcon(activity, item, menuItem)
+            out.add(TuckedMenuEntry(item, menuItem, title, icon))
+        }
+        return out
+    }
+
+    private fun showIosMorePopup(
+        activity: Activity,
+        toolbar: ViewGroup,
+        anchor: View,
+        palette: IosPalette,
+        config: Config
+    ) {
+        val entries = collectTuckedEntries(activity, toolbar)
+        if (entries.isEmpty()) {
+            openNativeOverflow(activity, toolbar)
+            return
+        }
+
+        val isTr = Locale.getDefault().language.equals("tr", ignoreCase = true)
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = buildGlassDrawable(
+                context = activity,
+                topColor = palette.glassTop,
+                bottomColor = palette.glassBottom,
+                borderColor = palette.glassBorder,
+                specularColor = palette.glassSpecular,
+                radiusDp = 20f,
+                topOnly = false
+            )
+            clipToOutline = true
+            elevation = dp(activity, 14f).toFloat()
+            setPadding(0, dp(activity, 6f), 0, dp(activity, 6f))
+        }
+
+        val popup = PopupWindow(
+            container,
+            dp(activity, 232f),
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            elevation = dp(activity, 14f).toFloat()
+        }
+
+        fun addRow(label: String, iconDrawable: Drawable?, onTap: () -> Unit) {
+            val row = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(activity, 16f), dp(activity, 12f), dp(activity, 16f), dp(activity, 12f))
+                background = RippleDrawable(
+                    ColorStateList.valueOf(palette.ripple),
+                    ColorDrawable(Color.TRANSPARENT),
+                    ColorDrawable(Color.WHITE)
+                )
+                setOnClickListener {
+                    popup.dismiss()
+                    anchor.post { onTap() }
+                }
+            }
+            val tv = TextView(activity).apply {
+                text = label
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTextColor(palette.textPrimary)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                if (config.iosTypography) {
+                    ensureSfProFonts()
+                    sfMedium?.let { typeface = it }
+                }
+            }
+            val tvLp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            row.addView(tv, tvLp)
+
+            if (iconDrawable != null) {
+                val iv = ImageView(activity).apply {
+                    setImageDrawable(iconDrawable)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    imageTintList = ColorStateList.valueOf(palette.textPrimary)
+                }
+                val iconSz = dp(activity, 20f)
+                val ivLp = LinearLayout.LayoutParams(iconSz, iconSz).apply {
+                    marginStart = dp(activity, 12f)
+                }
+                row.addView(iv, ivLp)
+            }
+            container.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        fun addDivider(thick: Boolean) {
+            val v = View(activity).apply {
+                setBackgroundColor(if (thick) ColorUtils.setAlphaComponent(palette.divider, 48) else palette.divider)
+            }
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                if (thick) dp(activity, 6f) else 1
+            )
+            container.addView(v, lp)
+        }
+
+        entries.forEachIndexed { idx, entry ->
+            addRow(entry.title, entry.icon) {
+                triggerMenuEntry(activity, toolbar, entry)
+            }
+            if (idx < entries.lastIndex) {
+                addDivider(thick = false)
+            }
+        }
+
+        addDivider(thick = true)
+        addRow(
+            label = if (isTr) "Diğer Seçenekler" else "More Options",
+            iconDrawable = IosDotsDrawable(palette.textPrimary)
+        ) {
+            openNativeOverflow(activity, toolbar)
+        }
+
+        container.alpha = 0f
+        container.scaleX = 0.92f
+        container.scaleY = 0.92f
+        container.pivotX = 0f
+        container.pivotY = 0f
+        popup.showAsDropDown(anchor, 0, dp(activity, 8f), Gravity.START)
+        container.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(150L)
+            .start()
+    }
+
+    private fun triggerMenuEntry(activity: Activity, toolbar: ViewGroup, entry: TuckedMenuEntry) {
+        val clicked = runCatching {
+            val v = entry.view
+            if (v.hasOnClickListeners()) {
+                v.performClick()
+            } else if (v is ViewGroup) {
+                var hit = false
+                for (i in 0 until v.childCount) {
+                    val c = v.getChildAt(i)
+                    if (c.hasOnClickListeners()) {
+                        hit = c.performClick()
+                        if (hit) break
+                    }
+                }
+                if (!hit) v.performClick() else true
+            } else {
+                v.performClick()
+            }
+        }.getOrDefault(false)
+
+        if (!clicked && entry.menuItem != null) {
+            runCatching {
+                val menu = getToolbarMenu(toolbar)
+                if (menu != null) {
+                    menu.performIdentifierAction(entry.menuItem.itemId, 0)
+                } else {
+                    activity.onOptionsItemSelected(entry.menuItem)
+                }
+            }
+        }
+    }
+
+    private fun openNativeOverflow(activity: Activity, toolbar: ViewGroup) {
+        val actionMenu = findActionMenuView(toolbar)
+        if (actionMenu != null) {
+            for (i in actionMenu.childCount - 1 downTo 0) {
+                val c = actionMenu.getChildAt(i)
+                if (c.tag == "wp_ios27_overflow_proxy" || c.javaClass.name.contains("Overflow", ignoreCase = true)) {
+                    if (runCatching { c.performClick() }.getOrDefault(false)) return
+                }
+            }
+        }
+        val opened = runCatching {
+            toolbar.javaClass.getMethod("showOverflowMenu").invoke(toolbar) as? Boolean == true
+        }.getOrDefault(false)
+        if (!opened) {
+            runCatching { activity.openOptionsMenu() }
+        }
+    }
+
+    private fun getToolbarMenu(toolbar: ViewGroup): Menu? {
+        var cls: Class<*>? = toolbar.javaClass
+        while (cls != null && cls != ViewGroup::class.java && cls != Any::class.java) {
+            for (m in cls.declaredMethods) {
+                if (m.parameterTypes.isEmpty() && Menu::class.java.isAssignableFrom(m.returnType)) {
+                    val res = runCatching {
+                        m.isAccessible = true
+                        m.invoke(toolbar) as? Menu
+                    }.getOrNull()
+                    if (res != null) return res
+                }
+            }
+            cls = cls.superclass
+        }
+        return null
+    }
+
+    private fun extractMenuItem(view: View): MenuItem? {
+        var cls: Class<*>? = view.javaClass
+        while (cls != null && cls != View::class.java && cls != Any::class.java) {
+            for (m in cls.declaredMethods) {
+                if (m.parameterTypes.isEmpty() && MenuItem::class.java.isAssignableFrom(m.returnType)) {
+                    val res = runCatching {
+                        m.isAccessible = true
+                        m.invoke(view) as? MenuItem
+                    }.getOrNull()
+                    if (res != null) return res
+                }
+            }
+            cls = cls.superclass
+        }
+        return null
+    }
+
+    private fun findMenuItemByActionView(toolbar: ViewGroup, view: View): MenuItem? {
+        val menu = getToolbarMenu(toolbar) ?: return null
+        for (i in 0 until menu.size()) {
+            val mi = menu.getItem(i)
+            if (mi.actionView === view) return mi
+        }
+        return null
+    }
+
+    private fun extractMenuTitle(view: View, menuItem: MenuItem?, index: Int): String {
+        val candidates = listOfNotNull(
+            menuItem?.title?.toString()?.trim(),
+            view.contentDescription?.toString()?.trim(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) view.tooltipText?.toString()?.trim() else null,
+            extractFirstText(view),
+        )
+        candidates.firstOrNull { it.isNotBlank() }?.let { return it }
+        val entry = getEntryName(view).replace('_', ' ').trim()
+        if (entry.isNotBlank()) return entry.replaceFirstChar { it.uppercase() }
+        return if (Locale.getDefault().language.equals("tr", ignoreCase = true)) {
+            "Hızlı Araç ${index + 1}"
+        } else {
+            "Quick Tool ${index + 1}"
+        }
+    }
+
+    private fun extractMenuIcon(activity: Activity, view: View, menuItem: MenuItem?): Drawable? {
+        val raw = menuItem?.icon ?: findDrawableInView(view) ?: return null
+        return runCatching { raw.constantState?.newDrawable(activity.resources)?.mutate() }.getOrNull() ?: raw
+    }
+
+    private fun findDrawableInView(view: View): Drawable? {
+        if (view is ImageView && view.drawable != null) return view.drawable
+        if (view is TextView) {
+            view.compoundDrawablesRelative.firstOrNull { it != null }?.let { return it }
+            view.compoundDrawables.firstOrNull { it != null }?.let { return it }
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findDrawableInView(view.getChildAt(i))?.let { return it }
             }
         }
         return null
