@@ -628,4 +628,24 @@
     <string name="elastic_preview_hint">Canlı test için aşağıdaki balonları tutup çek ve bırak</string>
     <string name="elastic_preview_msg1">Beni tutup çek!</string>
     <string name="elastic_preview_msg2">Bırakınca nasıl zıplıyor bak</string>
+    <string name="themes_center_title">Temalar</string>
+    <string name="themes_center_summary">Tam arayüz tema paketleri: iOS 27 Liquid Glass, Material 3 Expressive ve daha fazlası</string>
+    <string name="themes_center_subtitle">WhatsApp için tek tıkla tam görsel kimlik seç</string>
+    <string name="theme_ios27_title">iOS 27 (Liquid Glass)</string>
+    <string name="theme_ios27_desc">Saf OLED zemin, büyük iOS başlıklar, Liquid Glass alt/üst barlar, cam tepki çubuğu, menüler ve iOS balonları</string>
+    <string name="theme_default_title">Varsayılan (Stok WhatsApp)</string>
+    <string name="theme_default_desc">Tüm tema paketlerini kapatır ve standart WhatsApp görünümüne döner</string>
+    <string name="theme_active_badge">Aktif</string>
+    <string name="theme_apply_btn">Uygula</string>
+    <string name="theme_customize_btn">Özelleştir</string>
+    <string name="theme_ios27_options_header">iOS 27 İnce Ayarlar</string>
+    <string name="ios27_opt_oled">Saf OLED siyah / temiz beyaz zemin</string>
+    <string name="ios27_opt_header_search">iOS büyük kalın başlık ve cam arama hapı</string>
+    <string name="ios27_opt_glass_chat">Sohbet içi Liquid Glass üst/alt adacıklar</string>
+    <string name="ios27_opt_glass_overlays">Liquid Glass tepki çubuğu, menüler ve alt sayfalar</string>
+    <string name="ios27_opt_glass_fabs">Liquid Glass FAB ve aşağı kaydır butonu</string>
+    <string name="ios27_opt_bubbles">iOS tarzı mesaj balonları</string>
+    <string name="ios27_opt_typography">iOS temiz tipografi ve harf aralığı</string>
+    <string name="ios27_opt_contact_cards">Kişi bilgisi ve ayarlar için cam/grup kartları</string>
+    <string name="ios27_tweak_floating_bar">Liquid Glass alt çubuğu ince ayarla</string>
 </resources>

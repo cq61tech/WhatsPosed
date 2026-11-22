@@ -8,6 +8,7 @@ import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.activities.FloatingBarActivity
 import com.wmods.wppenhacer.activities.ElasticMessagesActivity
 import com.wmods.wppenhacer.activities.MaterialExpressiveActivity
+import com.wmods.wppenhacer.activities.ThemesActivity
 import com.wmods.wppenhacer.ui.fragments.base.BasePreferenceFragment
 
 class CustomizationFragment : BasePreferenceFragment() {
@@ -24,6 +25,10 @@ class CustomizationFragment : BasePreferenceFragment() {
         }
         findPreference<Preference>("material_expressive_editor")?.setOnPreferenceClickListener {
             startActivity(Intent(requireContext(), MaterialExpressiveActivity::class.java))
+            true
+        }
+        findPreference<Preference>("themes_center")?.setOnPreferenceClickListener {
+            startActivity(Intent(requireContext(), ThemesActivity::class.java))
             true
         }
     }

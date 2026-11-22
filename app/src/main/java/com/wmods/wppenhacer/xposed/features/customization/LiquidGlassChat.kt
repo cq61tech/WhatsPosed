@@ -83,7 +83,8 @@ class LiquidGlassChat(loader: ClassLoader, preferences: SharedPreferences) :
     override fun getPluginName(): String = "LiquidGlassChat"
 
     override fun doHook() {
-        val enableGlass = xprefs.getBoolean("liquid_glass_chat", false)
+        val enableGlass = xprefs.getBoolean("liquid_glass_chat", false) ||
+            ((xprefs.getString("active_ui_theme", "") == "ios27" || xprefs.getBoolean("ios27_enabled", false)) && xprefs.getBoolean("ios27_glass_chat", true))
         val enableElastic = xprefs.getBoolean("elastic_message_press", false)
         if (!enableGlass && !enableElastic) return
 

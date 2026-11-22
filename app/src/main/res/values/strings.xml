@@ -702,4 +702,24 @@
     <string name="elastic_preview_hint">Drag &amp; release the bubbles below to test live</string>
     <string name="elastic_preview_msg1">Pull and stretch me!</string>
     <string name="elastic_preview_msg2">Watch how bouncy it is</string>
+    <string name="themes_center_title">Themes</string>
+    <string name="themes_center_summary">Full UI theme packs: iOS 27 Liquid Glass, Material 3 Expressive &amp; more</string>
+    <string name="themes_center_subtitle">Choose one full visual identity for WhatsApp</string>
+    <string name="theme_ios27_title">iOS 27 (Liquid Glass)</string>
+    <string name="theme_ios27_desc">OLED canvas, large iOS headers, floating Liquid Glass bars, glass reaction trays, menus &amp; iOS bubbles</string>
+    <string name="theme_default_title">Default (Stock WhatsApp)</string>
+    <string name="theme_default_desc">Disables full UI theme overrides and restores stock WhatsApp styling</string>
+    <string name="theme_active_badge">Active</string>
+    <string name="theme_apply_btn">Apply</string>
+    <string name="theme_customize_btn">Customize</string>
+    <string name="theme_ios27_options_header">iOS 27 Fine-Tuning</string>
+    <string name="ios27_opt_oled">Pure OLED black / crisp white canvas</string>
+    <string name="ios27_opt_header_search">iOS large bold title &amp; frosted search pill</string>
+    <string name="ios27_opt_glass_chat">Liquid Glass floating chat header &amp; composer</string>
+    <string name="ios27_opt_glass_overlays">Liquid Glass reaction trays, menus &amp; sheets</string>
+    <string name="ios27_opt_glass_fabs">Liquid Glass FABs &amp; scroll-to-bottom pill</string>
+    <string name="ios27_opt_bubbles">iOS style message bubbles</string>
+    <string name="ios27_opt_typography">iOS clean typography &amp; tight tracking</string>
+    <string name="ios27_opt_contact_cards">Contact &amp; settings InsetGrouped glass cards</string>
+    <string name="ios27_tweak_floating_bar">Fine-tune Liquid Glass bottom bar</string>
 </resources>

@@ -7,9 +7,9 @@
         app:title="@string/general">
 
         <Preference
-            app:key="material_expressive_editor"
-            app:summary="@string/wpme_entry_summary"
-            app:title="@string/wpme_title" />
+            app:key="themes_center"
+            app:summary="@string/themes_center_summary"
+            app:title="@string/themes_center_title" />
 
         <rikka.material.preference.MaterialSwitchPreference
             app:key="changecolor"

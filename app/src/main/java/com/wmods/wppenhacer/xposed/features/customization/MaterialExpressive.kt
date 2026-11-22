@@ -75,6 +75,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
     override fun getPluginName(): String = "MaterialExpressive"
 
     override fun doHook() {
+        if (xprefs.getString("active_ui_theme", "") == "ios27") return
         if (!xprefs.getBoolean("me_enabled", false)) return
 
         val config = loadConfig()

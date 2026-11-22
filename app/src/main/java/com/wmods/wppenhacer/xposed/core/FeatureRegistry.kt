@@ -11,6 +11,7 @@ import com.wmods.wppenhacer.xposed.features.customization.FilterGroups
 import com.wmods.wppenhacer.xposed.features.customization.FloatingBottomBar
 import com.wmods.wppenhacer.xposed.features.customization.ChatFloatingTools
 import com.wmods.wppenhacer.xposed.features.customization.LiquidGlassChat
+import com.wmods.wppenhacer.xposed.features.customization.IOS27Theme
 import com.wmods.wppenhacer.xposed.features.customization.MaterialExpressive
 import com.wmods.wppenhacer.xposed.features.customization.NativeFloatingNavigation
 import com.wmods.wppenhacer.xposed.features.customization.HideSeenView
@@ -96,6 +97,7 @@ internal object FeatureRegistry {
         ChatFloatingTools::class.java,
         LiquidGlassChat::class.java,
         MaterialExpressive::class.java,
+        IOS27Theme::class.java,
         NativeFloatingNavigation::class.java,
         ChatLimit::class.java,
         SeparateGroup::class.java,
