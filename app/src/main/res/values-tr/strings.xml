@@ -648,4 +648,7 @@
     <string name="ios27_opt_typography">iOS temiz tipografi ve harf aralığı</string>
     <string name="ios27_opt_contact_cards">Kişi bilgisi ve ayarlar için cam/grup kartları</string>
     <string name="ios27_tweak_floating_bar">Liquid Glass alt çubuğu ince ayarla</string>
+    <string name="theme_tools_section_title">Alt Çubuk, Renkler ve Baloncuklar</string>
+    <string name="theme_manual_colors_title">Manuel Renkler, Monet ve Baloncuklar</string>
+    <string name="theme_ios27_conflict_note">iOS 27 açıkken çakışma olmaması için Monet, manuel renkler, özel üst bar ve eski baloncuk renkleri otomatik duraklatılır.</string>
 </resources>

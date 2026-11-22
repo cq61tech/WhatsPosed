@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.preference.PreferenceManager
 import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.activities.FloatingBarActivity
+import com.wmods.wppenhacer.activities.ManualColorsActivity
 import com.wmods.wppenhacer.activities.MaterialExpressiveActivity
 
 class ThemesPrefs(ctx: Context) {
@@ -98,6 +99,9 @@ class ThemesPrefs(ctx: Context) {
                 editor.putBoolean("fbb_glass", true)
                 editor.putInt("fbb_glass_alpha", 22)
                 editor.putBoolean("fbb_shadow", true)
+                editor.putInt("fbb_indicator_color", 0)
+                editor.putInt("fbb_icon_selected", 0)
+                editor.putInt("fbb_icon_unselected", 0)
             }
             else -> {
                 editor.putBoolean("me_enabled", false)
@@ -218,6 +222,47 @@ fun ThemesScreen(prefs: ThemesPrefs, onBack: () -> Unit) {
                 preview = null,
                 footer = null
             )
+
+            // 4) Unified Tools Card: Floating Bar + Manual Colors/Monet/Bubbles
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = cs.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, cs.outlineVariant.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.theme_tools_section_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = cs.onSurface
+                    )
+                    if (current == "ios27") {
+                        Text(
+                            text = stringResource(R.string.theme_ios27_conflict_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.primary
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { ctx.startActivity(Intent(ctx, FloatingBarActivity::class.java)) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.wpfb_title))
+                    }
+                    OutlinedButton(
+                        onClick = { ctx.startActivity(Intent(ctx, ManualColorsActivity::class.java)) },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.theme_manual_colors_title))
+                    }
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }

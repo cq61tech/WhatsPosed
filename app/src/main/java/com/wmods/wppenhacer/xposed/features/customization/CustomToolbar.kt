@@ -46,8 +46,9 @@ class CustomToolbar(loader: ClassLoader, preferences: SharedPreferences) :
 
     @Throws(Exception::class)
     override fun doHook() {
-        val showName = xprefs.getBoolean("shownamehome", false)
-        val showBio = xprefs.getBoolean("showbiohome", false)
+        val ios27Header = ThemeCoordinator.isIos27(xprefs) && xprefs.getBoolean("ios27_header_search", true)
+        val showName = !ios27Header && xprefs.getBoolean("shownamehome", false)
+        val showBio = !ios27Header && xprefs.getBoolean("showbiohome", false)
         val typeArchive = xprefs.getString("typearchive", "0") ?: "0"
 
         onMenuItemSelected = Unobfuscator.loadOnMenuItemSelected(classLoader)

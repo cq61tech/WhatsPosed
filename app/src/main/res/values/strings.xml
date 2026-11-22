@@ -722,4 +722,7 @@
     <string name="ios27_opt_typography">iOS clean typography &amp; tight tracking</string>
     <string name="ios27_opt_contact_cards">Contact &amp; settings InsetGrouped glass cards</string>
     <string name="ios27_tweak_floating_bar">Fine-tune Liquid Glass bottom bar</string>
+    <string name="theme_tools_section_title">Bar, Colors &amp; Bubbles</string>
+    <string name="theme_manual_colors_title">Manual Colors, Monet &amp; Bubbles</string>
+    <string name="theme_ios27_conflict_note">iOS 27 automatically overrides Monet, manual colors, custom toolbar &amp; custom bubble colors so nothing clashes.</string>
 </resources>

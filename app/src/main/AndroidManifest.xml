@@ -152,5 +152,6 @@
         <activity android:name=".activities.ElasticMessagesActivity" android:theme="@style/AppTheme" />
         <activity android:name=".activities.MaterialExpressiveActivity" android:theme="@style/AppTheme" />
         <activity android:name=".activities.ThemesActivity" android:theme="@style/AppTheme" />
+        <activity android:name=".activities.ManualColorsActivity" android:theme="@style/AppTheme" />
     </application>
 </manifest>

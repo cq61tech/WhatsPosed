@@ -12,105 +12,67 @@ import com.wmods.wppenhacer.xposed.core.devkit.Unobfuscator.loadBubbleDrawableMe
 import com.wmods.wppenhacer.xposed.utils.DesignUtils
 import com.wmods.wppenhacer.xposed.utils.Utils
 
-
 class BubbleColors(loader: ClassLoader, preferences: SharedPreferences) :
     Feature(loader, preferences) {
 
     override fun doHook() {
         val properties = Utils.getProperties(xprefs, "custom_css", "custom_filters")
+        val isIos27 = ThemeCoordinator.isIos27(xprefs)
+        val ios27Bubbles = isIos27 && xprefs.getBoolean("ios27_bubbles", true)
+        val bubbleColor = !isIos27 && xprefs.getBoolean("bubble_color", false)
+        val propEnabled = !isIos27 && properties.getProperty("bubble_colors") == "true"
 
-        val bubbleColor = xprefs.getBoolean("bubble_color", false)
+        if (!ios27Bubbles && !bubbleColor && !propEnabled) return
 
-        if (!bubbleColor && properties.getProperty("bubble_colors") != "true") return
+        val manualLeftColor = if (bubbleColor) xprefs.getInt("bubble_left", 0)
+        else if (propEnabled) DesignUtils.checkSystemColor(properties.getProperty("bubble_left", "#00000000")).toColorInt()
+        else 0
 
-        val bubbleLeftColor = if (bubbleColor) xprefs.getInt(
-            "bubble_left",
-            0
-        ) else DesignUtils.checkSystemColor(
-            properties.getProperty(
-                "bubble_left",
-                "#00000000"
-            )
-        ).toColorInt()
-        val bubbleRightColor = if (bubbleColor) xprefs.getInt(
-            "bubble_right",
-            0
-        ) else DesignUtils.checkSystemColor(
-            properties.getProperty(
-                "bubble_right",
-                "#00000000"
-            )
-        ).toColorInt()
+        val manualRightColor = if (bubbleColor) xprefs.getInt("bubble_right", 0)
+        else if (propEnabled) DesignUtils.checkSystemColor(properties.getProperty("bubble_right", "#00000000")).toColorInt()
+        else 0
+
+        fun resolveRightColor(): Int = if (ios27Bubbles) {
+            if (DesignUtils.isNightMode()) 0xFF005C4B.toInt() else 0xFFD9FDD3.toInt()
+        } else manualRightColor
+
+        fun resolveLeftColor(): Int = if (ios27Bubbles) {
+            if (DesignUtils.isNightMode()) 0xFF202224.toInt() else 0xFFFFFFFF.toInt()
+        } else manualLeftColor
 
         val dateWrapper = loadBallonDateDrawable(classLoader)
-
         dateWrapper.hook {
             after {
-                val drawable = result as? Drawable? ?: return@after
+                val drawable = result as? Drawable ?: return@after
                 val position = args[0] as Int
-                if (position == 3) {
-                    if (bubbleRightColor == 0) return@after
-                    drawable.colorFilter = PorterDuffColorFilter(
-                        bubbleRightColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                } else {
-                    if (bubbleLeftColor == 0) return@after
-                    drawable.colorFilter = PorterDuffColorFilter(
-                        bubbleLeftColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                }
+                val color = if (position == 3) resolveRightColor() else resolveLeftColor()
+                if (color == 0) return@after
+                drawable.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
             }
         }
 
         val babblon = loadBallonBorderDrawable(classLoader)
         babblon.hook {
             after {
-                val drawable = result as? Drawable? ?: return@after
+                val drawable = result as? Drawable ?: return@after
                 val position = args[1] as Int
-                if (position == 3) {
-                    if (bubbleRightColor == 0) return@after
-                    drawable.colorFilter = PorterDuffColorFilter(
-                        bubbleRightColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                } else {
-                    if (bubbleLeftColor == 0) return@after
-                    drawable.colorFilter = PorterDuffColorFilter(
-                        bubbleLeftColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                }
+                val color = if (position == 3) resolveRightColor() else resolveLeftColor()
+                if (color == 0) return@after
+                drawable.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
             }
         }
 
-
         val bubbleDrawableMethod = loadBubbleDrawableMethod(classLoader)
-
         bubbleDrawableMethod.hook {
             after {
                 val position = args[0] as Int
-                val draw = result as Drawable
-                val right = position == 3
-                if (right) {
-                    if (bubbleRightColor == 0) return@after
-                    draw.colorFilter = PorterDuffColorFilter(
-                        bubbleRightColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                } else {
-                    if (bubbleLeftColor == 0) return@after
-                    draw.colorFilter = PorterDuffColorFilter(
-                        bubbleLeftColor,
-                        PorterDuff.Mode.SRC_IN
-                    )
-                }
+                val draw = result as? Drawable ?: return@after
+                val color = if (position == 3) resolveRightColor() else resolveLeftColor()
+                if (color == 0) return@after
+                draw.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
             }
         }
     }
 
-    override fun getPluginName(): String {
-        return "Bubble Colors"
-    }
+    override fun getPluginName(): String = "Bubble Colors"
 }

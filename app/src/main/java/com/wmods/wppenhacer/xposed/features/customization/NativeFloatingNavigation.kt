@@ -18,6 +18,7 @@ class NativeFloatingNavigation(loader: ClassLoader, preferences: SharedPreferenc
     private var indicatorColorGetter: Method? = null
 
     override fun doHook() {
+        if (ThemeCoordinator.isIos27(xprefs)) return
         if (!xprefs.getBoolean(PREF_KEY, false)) return
         if (xprefs.getBoolean(FLOATING_BOTTOM_BAR_KEY, false)) return
         PropsHook.booleans[FLOATING_NAVIGATION_CODE] = true

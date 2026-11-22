@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/colors_customization">
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="changecolor"
+            app:summary="@string/colors_customization_sum"
+            app:title="@string/colors_customization" />
+
+        <ListPreference
+            app:defaultValue="manual"
+            app:dependency="changecolor"
+            app:entries="@array/changecolor_mode_entries"
+            app:entryValues="@array/changecolor_mode_values"
+            app:key="changecolor_mode"
+            app:summary="%s"
+            app:title="@string/changecolor_mode" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="changecolor"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="primary_color"
+            app:summary="@string/default_color"
+            app:title="@string/primary_color" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="changecolor"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="background_color"
+            app:summary="@string/default_color"
+            app:title="@string/background_color" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="changecolor"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="text_color"
+            app:summary="@string/default_color"
+            app:title="@string/text_color" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/change_bubble_colors">
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="bubble_color"
+            app:summary="@string/change_blubble_color_sum"
+            app:title="@string/change_bubble_colors" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="bubble_color"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="bubble_left"
+            app:summary="@string/default_color"
+            app:title="@string/bubble_left" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="bubble_color"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="bubble_right"
+            app:summary="@string/default_color"
+            app:title="@string/bubble_right" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/home_screen">
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="liquid_glass_chat"
+            app:summary="@string/liquid_glass_chat_sum"
+            app:title="@string/liquid_glass_chat" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:key="native_floating_navigation"
+            app:summary="@string/native_floating_navigation_sum"
+            app:title="@string/native_floating_navigation" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="native_floating_navigation"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="native_floating_navigation_bg_color"
+            app:summary="@string/default_color"
+            app:title="@string/native_floating_navigation_bg_color" />
+
+        <com.wmods.wppenhacer.preference.FeatureColorPreferenceCompat
+            app:cpv_showAlphaSlider="true"
+            app:dependency="native_floating_navigation"
+            app:icon="@drawable/ic_customization_palette_24"
+            app:key="native_floating_navigation_selection_color"
+            app:summary="@string/default_color"
+            app:title="@string/native_floating_navigation_selection_color" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

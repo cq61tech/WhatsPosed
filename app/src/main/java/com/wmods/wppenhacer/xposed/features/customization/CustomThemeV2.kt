@@ -348,10 +348,23 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
         var primaryColorInt = xprefs.getInt("primary_color", 0)
         var textColorInt = xprefs.getInt("text_color", 0)
         var backgroundColorInt = xprefs.getInt("background_color", 0)
-        val changeColorEnabled = xprefs.getBoolean("changecolor", false)
+        val isIos27Theme = ThemeCoordinator.isIos27(xprefs)
+        val changeColorEnabled = isIos27Theme || xprefs.getBoolean("changecolor", false)
         val changeColorMode = xprefs.getString("changecolor_mode", "manual")
-        val useMonetColors = changeColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                && changeColorMode == "monet"
+                val useMonetColors = !isIos27Theme && changeColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            && changeColorMode == "monet"
+
+        if (isIos27Theme) {
+            val dark = DesignUtils.isNightMode()
+            val oled = xprefs.getBoolean("ios27_oled_canvas", true)
+            primaryColorInt = if (dark) 0xFF30D158.toInt() else 0xFF25D366.toInt()
+            textColorInt = if (dark) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+            backgroundColorInt = if (dark) {
+                if (oled) 0xFF000000.toInt() else 0xFF0B0D10.toInt()
+            } else {
+                0xFFFFFFFF.toInt()
+            }
+        }
 
         if (useMonetColors) {
             val primaryMonetColor = resolveMonetColor(
