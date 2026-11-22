@@ -1,6 +1,10 @@
 package com.wmods.wppenhacer.xposed.features.customization
 
 import android.app.Activity
+import org.luckypray.dexkit.query.enums.StringMatchType
+import com.wmods.wppenhacer.xposed.core.devkit.Unobfuscator
+import com.wmods.wppenhacer.listeners.OnMultiClickListener
+import android.content.Intent
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
@@ -78,6 +82,8 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
     private val idNameCache = ConcurrentHashMap<Int, String>()
     private val styledViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
     private val installedHeaders = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
+    private val toolbarBasePadRight = WeakHashMap<ViewGroup, Int>()
+    private val siblingBaseTopMargin = WeakHashMap<View, Int>()
 
     @Volatile private var fontsLoaded = false
     @Volatile private var sfRegular: Typeface? = null
@@ -345,25 +351,46 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
             toolbar.addView(moreBtn, 0, lp)
         }
 
-        // Right circular bright iOS green (+) button linked to HomeActivity's main FAB
-        if (toolbar.findViewWithTag<View>("wp_ios27_plus_btn") == null) {
-            val plusBtn = ImageView(activity).apply {
-                tag = "wp_ios27_plus_btn"
-                setImageDrawable(IosPlusDrawable(if (palette.dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()))
-                scaleType = ImageView.ScaleType.CENTER
-                contentDescription = "New Chat"
-                background = makeCircleGlassDrawable(activity, palette, isGreen = true)
-                clipToOutline = true
-                setOnClickListener {
-                    findHomeFab(activity)?.performClick()
+        // Reserve clean right-edge slot in toolbar so ActionMenuView never overlaps the green (+) button
+        val basePadRight = toolbarBasePadRight.getOrPut(toolbar) { toolbar.paddingRight }
+        val targetPadRight = basePadRight + dp(activity, 46f)
+        toolbar.clipToPadding = false
+        if (toolbar.paddingRight != targetPadRight) {
+            toolbar.setPadding(toolbar.paddingLeft, toolbar.paddingTop, targetPadRight, toolbar.paddingBottom)
+        }
+
+        // Right circular bright iOS green (+) button pinned cleanly to far-right edge (R8-proof)
+        val plusBtn = toolbar.findViewWithTag<ImageView>("wp_ios27_plus_btn") ?: ImageView(activity).apply {
+            tag = "wp_ios27_plus_btn"
+            setImageDrawable(IosPlusDrawable(if (palette.dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()))
+            scaleType = ImageView.ScaleType.CENTER
+            contentDescription = "New Chat"
+            background = makeCircleGlassDrawable(activity, palette, isGreen = true)
+            clipToOutline = true
+            setOnClickListener {
+                findHomeFab(activity)?.performClick()
+            }
+            toolbar.addView(this, ViewGroup.MarginLayoutParams(btnSize, btnSize))
+        }
+
+        val pinPlusToRight = {
+            if (toolbar.width > btnSize) {
+                val r = toolbar.width - dp(activity, 12f)
+                val l = r - btnSize
+                val t = ((toolbar.height - btnSize) / 2).coerceAtLeast(0)
+                if (plusBtn.left != l || plusBtn.top != t || plusBtn.right != r) {
+                    plusBtn.layout(l, t, r, t + btnSize)
                 }
             }
-            val lp = createToolbarLayoutParams(toolbar, btnSize, btnSize, Gravity.END or Gravity.CENTER_VERTICAL)
-            (lp as? ViewGroup.MarginLayoutParams)?.let {
-                it.marginStart = dp(activity, 6f)
-                it.marginEnd = dp(activity, 12f)
+        }
+        toolbar.post { pinPlusToRight() }
+        if (styledViews.add(plusBtn)) {
+            toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                pinPlusToRight()
             }
-            toolbar.addView(plusBtn, lp)
+            plusBtn.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                pinPlusToRight()
+            }
         }
 
         // Row 2: Large bold SF Pro Display Title below toolbar
@@ -395,6 +422,7 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
         if (existing != null) {
             existing.setTextColor(palette.textPrimary)
             existing.setBackgroundColor(palette.canvas)
+            existing.post { syncContentBelowLargeHeader(activity, toolbar, existing) }
             return existing
         }
 
@@ -425,11 +453,11 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
         val tv = TextView(activity).apply {
             tag = "wp_ios27_large_title"
             text = defaultTitle
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
             setTextColor(palette.textPrimary)
             setBackgroundColor(palette.canvas)
             letterSpacing = -0.03f
-            setPadding(dp(activity, 16f), dp(activity, 2f), dp(activity, 16f), dp(activity, 8f))
+            setPadding(dp(activity, 16f), 0, dp(activity, 16f), dp(activity, 6f))
             typeface = if (config.iosTypography) {
                 ensureSfProFonts()
                 sfBold ?: Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
@@ -437,12 +465,93 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
                 Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             }
         }
+        bindArchiveShortcut(tv, activity)
+
         val lp = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         )
         targetContainer.addView(tv, idx + 1, lp)
+        tv.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            syncContentBelowLargeHeader(activity, toolbar, tv)
+        }
+        tv.post { syncContentBelowLargeHeader(activity, toolbar, tv) }
         return tv
+    }
+
+    private fun bindArchiveShortcut(titleView: TextView, activity: Activity) {
+        val typeArchive = xprefs.getString("typearchive", "0") ?: "0"
+        if (typeArchive != "1" && typeArchive != "2") return
+        val openArchive = {
+            runCatching {
+                val archivedClass = Unobfuscator.findFirstClassUsingName(
+                    activity.classLoader,
+                    StringMatchType.EndsWith,
+                    "ArchivedConversationsActivity"
+                )
+                val intent = Intent().apply {
+                    setClassName(Utils.application.packageName, archivedClass.name)
+                }
+                activity.startActivity(intent)
+            }
+        }
+        when (typeArchive) {
+            "1" -> {
+                titleView.isClickable = true
+                titleView.setOnClickListener(object : OnMultiClickListener(5, 700L) {
+                    override fun onMultiClick(v: View) {
+                        openArchive()
+                    }
+                })
+            }
+            "2" -> {
+                titleView.isLongClickable = true
+                titleView.setOnLongClickListener {
+                    openArchive()
+                    true
+                }
+            }
+        }
+    }
+
+    /**
+     * Prevents the added 2nd-tier large title ("Sohbetler") from overlapping the search bar
+     * and cropping the top of IGStatus circles when the header overlays the pager container.
+     */
+    private fun syncContentBelowLargeHeader(activity: Activity, toolbar: ViewGroup, titleView: TextView) {
+        val extraH = titleView.height.takeIf { it > 0 } ?: dp(activity, 42f)
+        var headerRoot: View = toolbar
+        var parent: ViewGroup? = toolbar.parent as? ViewGroup
+        var depth = 0
+        while (parent != null && depth < 5) {
+            val isVertLinear = parent is LinearLayout && parent.orientation == LinearLayout.VERTICAL
+            val isAppBar = parent.javaClass.simpleName.contains("AppBarLayout", ignoreCase = true)
+            if (!isVertLinear && !isAppBar) break
+            headerRoot = parent
+            parent = parent.parent as? ViewGroup
+            depth++
+        }
+        val overlayParent = parent ?: return
+        if (overlayParent is LinearLayout && overlayParent.orientation == LinearLayout.VERTICAL) return
+
+        val headerBottom = headerRoot.bottom
+        for (i in 0 until overlayParent.childCount) {
+            val sib = overlayParent.getChildAt(i)
+            if (sib === headerRoot || sib.visibility != View.VISIBLE) continue
+            if (sib.tag?.toString()?.startsWith("wp_") == true) continue
+            if (sib.height > 0 && sib.height < dp(activity, 180f)) continue
+            val mlp = sib.layoutParams as? ViewGroup.MarginLayoutParams ?: continue
+            val baseTop = siblingBaseTopMargin.getOrPut(sib) { mlp.topMargin }
+            // Only shift if the sibling actually starts behind headerRoot (not already pushed below by CoordinatorLayout)
+            val overlapsHeader = headerBottom <= 0 || sib.top < headerBottom - dp(activity, 6f) || mlp.topMargin > baseTop
+            if (overlapsHeader) {
+                val desiredTop = baseTop + extraH
+                if (mlp.topMargin != desiredTop) {
+                    mlp.topMargin = desiredTop
+                    sib.layoutParams = mlp
+                }
+            }
+        }
     }
 
     private fun syncLargeTitleWithBottomNav(activity: Activity, titleView: TextView) {

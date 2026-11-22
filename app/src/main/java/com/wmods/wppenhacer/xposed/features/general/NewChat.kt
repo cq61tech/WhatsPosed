@@ -14,6 +14,7 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.extension.kavaref.hook
 import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.xposed.core.Feature
+import com.wmods.wppenhacer.xposed.features.customization.ThemeCoordinator
 import com.wmods.wppenhacer.xposed.core.WppCore.homeActivityClass
 import com.wmods.wppenhacer.xposed.core.components.AlertDialogWpp
 import com.wmods.wppenhacer.xposed.utils.DesignUtils
@@ -25,6 +26,7 @@ class NewChat(loader: ClassLoader, preferences: SharedPreferences) : Feature(loa
         val homeActivity = homeActivityClass
         val action = xprefs.getBoolean("buttonaction", true)
 
+        if (ThemeCoordinator.isIos27(xprefs) && xprefs.getBoolean("ios27_header_search", true)) return
         if (!xprefs.getBoolean("newchat", true)) return
 
         homeActivity.resolve().firstMethod {
