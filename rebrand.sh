@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")"
 
 APP_ID="com.cq61tech.whatsposed"
-VERSION_NAME="0.6.8"
-VERSION_CODE="21"
+VERSION_NAME="0.6.8-1"
+VERSION_CODE="22"
 REPO="cq61tech/WhatsPosed"
 
 GRADLE=app/build.gradle.kts
@@ -21,7 +21,7 @@ done
 
 sed -i "s/applicationId = \"com\.wmods\.wppenhacer\"/applicationId = \"$APP_ID\"/" $GRADLE
 sed -i "s/versionCode = [0-9]*/versionCode = $VERSION_CODE/" $GRADLE
-sed -i "s/versionName = \"[0-9.]* (/versionName = \"$VERSION_NAME (/" $GRADLE
+sed -i "s/versionName = \"[^\" ]* (/versionName = \"$VERSION_NAME (/" $GRADLE
 sed -i 's/Wa Enhancer Business/WhatsPosed Business/; s/WaEnhancer-Business/WhatsPosed-Business/; s/else -> "WaEnhancer"/else -> "WhatsPosed"/' $GRADLE
 
 sed -i 's/WaEnhancer/WhatsPosed/g' .github/workflows/*.yml
@@ -85,12 +85,11 @@ if ! grep -q 'compose-bom' $GRADLE; then
     sed -i '/implementation(libs.androidx.datastore.preferences)/a\    implementation(platform("androidx.compose:compose-bom:2026.05.00"))\n    implementation("androidx.compose.material3:material3")\n    implementation("androidx.compose.ui:ui")\n    implementation("androidx.compose.foundation:foundation")\n    implementation("androidx.compose.animation:animation")\n    implementation("androidx.activity:activity-compose:1.13.0")' $GRADLE
 fi
 
-if ! grep -q 'FloatingBarActivity' app/src/main/AndroidManifest.xml; then
-    sed -i 's#</application>#    <activity android:name=".activities.FloatingBarActivity" android:theme="@style/AppTheme" />\n    </application>#' app/src/main/AndroidManifest.xml
-fi
-if ! grep -q 'AppearanceActivity' app/src/main/AndroidManifest.xml; then
-    sed -i 's#</application>#    <activity android:name=".activities.AppearanceActivity" android:theme="@style/AppTheme" />\n    </application>#' app/src/main/AndroidManifest.xml
-fi
+for act in AppearanceActivity FloatingBarActivity ElasticMessagesActivity MaterialExpressiveActivity ThemesActivity ManualColorsActivity; do
+    if ! grep -q "$act" app/src/main/AndroidManifest.xml; then
+        sed -i "s#</application>#    <activity android:name=\".activities.$act\" android:theme=\"@style/AppTheme\" />\n    </application>#" app/src/main/AndroidManifest.xml
+    fi
+done
 
 for f in .github/workflows/build-whatsapp.yml .github/workflows/build-business.yml .github/workflows/release.yml; do
     if [ -f "$f" ] && ! grep -q 'Fetch fonts' "$f"; then
@@ -105,7 +104,7 @@ fi
 find $RES -type f -name '*.xml' -print0 | xargs -0 sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
 grep -rl 'Developer *: *Dev4Mod' app/src/main/java | xargs -r sed -i 's#\(Developer *: *\)Dev4Mod#\1cq61tech#g'
 
-sed -i 's#actions/checkout@v7#actions/checkout@v4#; s#actions/setup-java@v5\.6\.0#actions/setup-java@v4#; s#actions/upload-artifact@v7#actions/upload-artifact@v4#; s#softprops/action-gh-release@v3#softprops/action-gh-release@v2#' .github/workflows/*.yml
+sed -i 's#actions/checkout@v[0-9.]*#actions/checkout@v4#g; s#actions/setup-java@v[0-9.]*#actions/setup-java@v4#g; s#actions/upload-artifact@v[0-9.]*#actions/upload-artifact@v4#g; s#softprops/action-gh-release@v[0-9.]*#softprops/action-gh-release@v2#g' .github/workflows/*.yml
 if grep -q 'name: Read changelog' .github/workflows/release.yml; then
     sed -i '/- name: Read changelog/,$d' .github/workflows/release.yml
 fi
