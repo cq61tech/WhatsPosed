@@ -24,6 +24,10 @@ import android.graphics.Shader
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import androidx.core.graphics.ColorUtils
+import androidx.core.content.ContextCompat
+import android.graphics.drawable.StateListDrawable
+import android.graphics.drawable.InsetDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -83,6 +87,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val labelGapDp: Int,
         val glass: Boolean,
         val liquid: Boolean,
+        val materialPill: Boolean,
         val glassAlpha: Int,
         val shadow: Boolean,
         val hideOnScroll: Boolean,
@@ -93,7 +98,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             for (v in intArrayOf(
                 iconSizeDp, if (ovalIndicator) 1 else 0, indicatorColor, selectedColor,
                 unselectedColor, if (hideLabels) 1 else 0, textSizeSp, labelGapDp,
-                if (liquid) 1 else 0,
+                if (liquid) 1 else 0, if (materialPill) 1 else 0,
             )) h = 31 * h + v
             return h
         }
@@ -118,6 +123,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     private fun readStyle(): Style {
         val preset = xprefs.getString("fbb_preset", "classic") ?: "classic"
         val isLiquid = preset == "liquid"
+        val isMaterialPill = preset == "material_pill"
         return Style(
             radiusDp = xprefs.getInt("floating_bottom_bar_radius", CORNER_RADIUS_DP),
             bottomMarginDp = xprefs.getInt("fbb_bottom_margin", 16),
@@ -125,15 +131,16 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             padVDp = xprefs.getInt("fbb_pad_v", 0),
             padHDp = xprefs.getInt("fbb_pad_h", 0),
             iconSizeDp = xprefs.getInt("fbb_icon_size", 0),
-            ovalIndicator = isLiquid || xprefs.getString("fbb_indicator", "default") == "oval",
+            ovalIndicator = isLiquid || (!isMaterialPill && xprefs.getString("fbb_indicator", "default") == "oval"),
             indicatorColor = xprefs.getInt("fbb_indicator_color", 0),
             selectedColor = xprefs.getInt("fbb_icon_selected", 0),
             unselectedColor = xprefs.getInt("fbb_icon_unselected", 0),
             hideLabels = xprefs.getBoolean("fbb_hide_labels", false),
             textSizeSp = xprefs.getInt("fbb_text_size", 0),
             labelGapDp = xprefs.getInt("fbb_label_gap", 0),
-            glass = isLiquid || xprefs.getBoolean("fbb_glass", false),
+            glass = isLiquid || (!isMaterialPill && xprefs.getBoolean("fbb_glass", false)),
             liquid = isLiquid,
+            materialPill = isMaterialPill,
             glassAlpha = xprefs.getInt("fbb_glass_alpha", if (isLiquid) 22 else 35),
             shadow = xprefs.getBoolean("fbb_shadow", true),
             hideOnScroll = xprefs.getBoolean("fbb_hide_scroll", false),
@@ -324,7 +331,16 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val light = isLightColor(barColor)
         val radius = Utils.dipToPixels(style.radiusDp.toFloat()).toFloat()
 
-        if (style.glass) {
+        if (style.materialPill) {
+            val mp = resolveMaterialPillPalette(bar.context, light, style)
+            val pillRadius = max(radius, Utils.dipToPixels(36f).toFloat())
+            bar.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = pillRadius
+                setColor(mp.dockBg)
+                setStroke(Utils.dipToPixels(1.25f).coerceAtLeast(1), mp.dockStroke)
+            }
+        } else if (style.glass) {
             if (bar.background !is GlassDrawable) {
                 val glass = GlassDrawable(
                     container, bar, radius, barColor or (0xFF shl 24),
@@ -438,6 +454,119 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         false
     }
 
+    private data class PillPalette(
+        val dockBg: Int,
+        val dockStroke: Int,
+        val activePill: Int,
+        val activeFg: Int,
+        val inactiveFg: Int,
+    )
+
+    private fun resolveSystemColor(context: Context, name: String): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return 0
+        val id = context.resources.getIdentifier(name, "color", "android")
+        if (id == 0) return 0
+        return runCatching { ContextCompat.getColor(context, id) }.getOrDefault(0)
+    }
+
+    private fun resolveMaterialPillPalette(context: Context, light: Boolean, style: Style): PillPalette {
+        val acc200 = resolveSystemColor(context, "system_accent1_200")
+        val acc300 = resolveSystemColor(context, "system_accent1_300")
+        val acc500 = resolveSystemColor(context, "system_accent1_500")
+        val acc600 = resolveSystemColor(context, "system_accent1_600")
+        val acc800 = resolveSystemColor(context, "system_accent1_800")
+        val acc900 = resolveSystemColor(context, "system_accent1_900")
+        val neu100 = resolveSystemColor(context, "system_neutral1_100")
+        val neu900 = resolveSystemColor(context, "system_neutral1_900")
+
+        return if (!light) {
+            val baseDark = if (acc900 != 0 && neu900 != 0) {
+                ColorUtils.blendARGB(acc900, neu900, 0.35f)
+            } else {
+                0xFF07213E.toInt()
+            }
+            val dockBg = ColorUtils.setAlphaComponent(baseDark, 242)
+            val dockStroke = ColorUtils.setAlphaComponent(
+                if (acc300 != 0) acc300 else 0xFF5A9BFF.toInt(),
+                68
+            )
+            val defaultPill = when {
+                acc600 != 0 -> acc600
+                acc500 != 0 -> acc500
+                else -> 0xFF0A66C2.toInt()
+            }
+            val pill = if (style.indicatorColor != 0) style.indicatorColor else defaultPill
+            val activeFg = if (style.selectedColor != 0) {
+                style.selectedColor
+            } else if (ColorUtils.calculateLuminance(pill) > 0.55) {
+                0xFF0A1420.toInt()
+            } else {
+                Color.WHITE
+            }
+            val inactiveFg = if (style.unselectedColor != 0) {
+                style.unselectedColor
+            } else if (acc200 != 0) {
+                ColorUtils.setAlphaComponent(acc200, 224)
+            } else {
+                0xFFA8C4E6.toInt()
+            }
+            PillPalette(dockBg, dockStroke, pill, activeFg, inactiveFg)
+        } else {
+            val baseLight = if (neu100 != 0 && acc200 != 0) {
+                ColorUtils.blendARGB(neu100, acc200, 0.22f)
+            } else {
+                0xFFEAF2FC.toInt()
+            }
+            val dockBg = ColorUtils.setAlphaComponent(baseLight, 245)
+            val dockStroke = ColorUtils.setAlphaComponent(
+                if (acc500 != 0) acc500 else 0xFF1A73E8.toInt(),
+                64
+            )
+            val defaultPill = if (acc600 != 0) acc600 else 0xFF1A73E8.toInt()
+            val pill = if (style.indicatorColor != 0) style.indicatorColor else defaultPill
+            val activeFg = if (style.selectedColor != 0) {
+                style.selectedColor
+            } else if (ColorUtils.calculateLuminance(pill) > 0.55) {
+                0xFF0E1B2A.toInt()
+            } else {
+                Color.WHITE
+            }
+            val inactiveFg = if (style.unselectedColor != 0) {
+                style.unselectedColor
+            } else if (acc800 != 0) {
+                ColorUtils.setAlphaComponent(acc800, 195)
+            } else {
+                0xFF3A5270.toInt()
+            }
+            PillPalette(dockBg, dockStroke, pill, activeFg, inactiveFg)
+        }
+    }
+
+    private fun applyMaterialPillTabs(bar: ViewGroup, mp: PillPalette) {
+        val menuGroup = if (bar.childCount == 1 && bar.getChildAt(0) is ViewGroup) {
+            bar.getChildAt(0) as ViewGroup
+        } else {
+            bar
+        }
+        val insetH = Utils.dipToPixels(3f)
+        val insetV = Utils.dipToPixels(2f)
+        for (i in 0 until menuGroup.childCount) {
+            val tab = menuGroup.getChildAt(i)
+            val activeShape = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 10000f
+                setColor(mp.activePill)
+            }
+            val activeInset = InsetDrawable(activeShape, insetH, insetV, insetH, insetV)
+            val sld = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_selected), activeInset)
+                addState(intArrayOf(android.R.attr.state_checked), activeInset)
+                addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+            }
+            tab.background = sld
+        }
+    }
+
     private fun tintList(selected: Int, unselected: Int): ColorStateList = ColorStateList(
         arrayOf(
             intArrayOf(android.R.attr.state_selected),
@@ -461,11 +590,12 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (styledViews[bar] == sig && !itemsNeedWork(bar, style)) return
         styledViews[bar] = sig
 
-        val autoSelected = if (light) Color.BLACK else Color.WHITE
-        val autoUnselected = (autoSelected and 0x00FFFFFF) or (0x99 shl 24)
-        val customColors = style.selectedColor != 0 || style.unselectedColor != 0
-        val selected = if (style.selectedColor != 0) style.selectedColor else autoSelected
-        val unselected = if (style.unselectedColor != 0) style.unselectedColor else autoUnselected
+        val mp = if (style.materialPill) resolveMaterialPillPalette(bar.context, light, style) else null
+        val autoSelected = mp?.activeFg ?: if (light) Color.BLACK else Color.WHITE
+        val autoUnselected = mp?.inactiveFg ?: ((autoSelected and 0x00FFFFFF) or (0x99 shl 24))
+        val customColors = mp != null || style.selectedColor != 0 || style.unselectedColor != 0
+        val selected = mp?.activeFg ?: if (style.selectedColor != 0) style.selectedColor else autoSelected
+        val unselected = mp?.inactiveFg ?: if (style.unselectedColor != 0) style.unselectedColor else autoUnselected
         val csl = tintList(selected, unselected)
         val iconPx = if (style.iconSizeDp > 0) Utils.dipToPixels(style.iconSizeDp.toFloat()) else 0
 
@@ -480,7 +610,10 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (style.hideLabels) {
             apiLabels = callApi(bar, "setLabelVisibilityMode", Int::class.javaPrimitiveType!!, 2)
         }
-        if (style.indicatorColor != 0) {
+        if (mp != null) {
+            callApi(bar, "setItemActiveIndicatorEnabled", Boolean::class.javaPrimitiveType!!, false)
+            applyMaterialPillTabs(bar, mp)
+        } else if (style.indicatorColor != 0) {
             callApi(
                 bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
                 ColorStateList.valueOf(style.indicatorColor),
@@ -541,6 +674,11 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun styleIndicator(view: View, style: Style, light: Boolean) {
+        if (style.materialPill) {
+            view.background = null
+            view.alpha = 0f
+            return
+        }
         if (style.ovalIndicator) {
             val fill = if (style.indicatorColor != 0) {
                 style.indicatorColor

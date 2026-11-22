@@ -725,4 +725,6 @@
     <string name="theme_tools_section_title">Bar, Colors &amp; Bubbles</string>
     <string name="theme_manual_colors_title">Manual Colors, Monet &amp; Bubbles</string>
     <string name="theme_ios27_conflict_note">iOS 27 automatically overrides Monet, manual colors, custom toolbar &amp; custom bubble colors so nothing clashes.</string>
+    <string name="wpfb_preset_material_pill">Material You Pill</string>
+    <string name="wpfb_preset_material_pill_sum">Dynamic Monet capsule with a full-height active pill wrapping icon &amp; label</string>
 </resources>

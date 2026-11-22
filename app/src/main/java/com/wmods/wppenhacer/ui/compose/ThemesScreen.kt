@@ -82,12 +82,28 @@ class ThemesPrefs(ctx: Context) {
             "material_expressive" -> {
                 editor.putBoolean("me_enabled", true)
                 editor.putBoolean("ios27_enabled", false)
+                // Clean up iOS 27 chat glass & apply Material You signature Pill Dock (freely editable afterwards)
+                editor.putBoolean("liquid_glass_chat", false)
+                editor.putBoolean("floating_bottom_bar", true)
+                editor.putString("fbb_preset", "material_pill")
+                editor.putInt("floating_bottom_bar_radius", 42)
+                editor.putInt("fbb_bottom_margin", 14)
+                editor.putInt("fbb_side_margin", 16)
+                editor.putInt("fbb_pad_v", 6)
+                editor.putInt("fbb_pad_h", 6)
+                editor.putString("fbb_indicator", "material_pill")
+                editor.putBoolean("fbb_glass", false)
+                editor.putBoolean("fbb_shadow", true)
+                editor.putInt("fbb_indicator_color", 0)
+                editor.putInt("fbb_icon_selected", 0)
+                editor.putInt("fbb_icon_unselected", 0)
             }
             "ios27" -> {
                 editor.putBoolean("me_enabled", false)
                 editor.putBoolean("ios27_enabled", true)
-                // Auto-enable full iOS 27 Liquid Glass navigation + chat islands
+                // Apply iOS 27 signature Liquid Glass Dock + chat islands + iOS context menu
                 editor.putBoolean("liquid_glass_chat", true)
+                editor.putBoolean("floatingmenu", true)
                 editor.putBoolean("floating_bottom_bar", true)
                 editor.putString("fbb_preset", "liquid")
                 editor.putInt("floating_bottom_bar_radius", 34)
@@ -106,6 +122,9 @@ class ThemesPrefs(ctx: Context) {
             else -> {
                 editor.putBoolean("me_enabled", false)
                 editor.putBoolean("ios27_enabled", false)
+                editor.putBoolean("liquid_glass_chat", false)
+                editor.putBoolean("floating_bottom_bar", false)
+                editor.putString("fbb_preset", "classic")
             }
         }
         editor.apply()

@@ -513,13 +513,31 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun createToolbarLayoutParams(toolbar: ViewGroup, w: Int, h: Int, gravity: Int): ViewGroup.LayoutParams {
-        return runCatching {
-            val cls = Class.forName("${toolbar.javaClass.name}\$LayoutParams")
-            val ctor = cls.getConstructor(Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-            ctor.newInstance(w, h, gravity) as ViewGroup.LayoutParams
-        }.getOrElse {
-            ViewGroup.MarginLayoutParams(w, h)
+        val lp = runCatching {
+            var cls: Class<*>? = toolbar.javaClass
+            var m: java.lang.reflect.Method? = null
+            while (cls != null && m == null) {
+                m = runCatching { cls.getDeclaredMethod("generateDefaultLayoutParams") }.getOrNull()
+                cls = cls.superclass
+            }
+            m?.apply { isAccessible = true }?.invoke(toolbar) as? ViewGroup.LayoutParams
+        }.getOrNull() ?: ViewGroup.MarginLayoutParams(w, h)
+
+        lp.width = w
+        lp.height = h
+        var lpCls: Class<*>? = lp.javaClass
+        while (lpCls != null) {
+            val field = runCatching { lpCls.getDeclaredField("gravity") }.getOrNull()
+            if (field != null) {
+                runCatching {
+                    field.isAccessible = true
+                    field.setInt(lp, gravity)
+                }
+                break
+            }
+            lpCls = lpCls.superclass
         }
+        return lp
     }
 
     private fun styleIosCircleAction(view: View, palette: IosPalette, isGreen: Boolean) {

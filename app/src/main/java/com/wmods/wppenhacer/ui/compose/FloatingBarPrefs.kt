@@ -75,6 +75,20 @@ class FloatingBarPrefs(ctx: Context) {
                 shadow.value = true
             }
 
+            "material_pill" -> {
+                radius.value = 42
+                bottomMargin.value = 14
+                sideMargin.value = 16
+                padV.value = 6
+                padH.value = 6
+                indicator.value = "material_pill"
+                glass.value = false
+                shadow.value = true
+                indicatorColor.value = 0
+                iconSelected.value = 0
+                iconUnselected.value = 0
+            }
+
             "liquid" -> {
                 radius.value = 34
                 bottomMargin.value = 18

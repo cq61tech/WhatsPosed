@@ -651,4 +651,6 @@
     <string name="theme_tools_section_title">Alt Çubuk, Renkler ve Baloncuklar</string>
     <string name="theme_manual_colors_title">Manuel Renkler, Monet ve Baloncuklar</string>
     <string name="theme_ios27_conflict_note">iOS 27 açıkken çakışma olmaması için Monet, manuel renkler, özel üst bar ve eski baloncuk renkleri otomatik duraklatılır.</string>
+    <string name="wpfb_preset_material_pill">Material You Hap</string>
+    <string name="wpfb_preset_material_pill_sum">İkon ve etiketi birlikte saran tam boy dinamik Monet hap göstergeli dock</string>
 </resources>
