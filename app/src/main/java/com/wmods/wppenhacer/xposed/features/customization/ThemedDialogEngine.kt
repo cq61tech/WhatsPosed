@@ -202,7 +202,13 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
 
         val card = parentPanel!!
         val dm = ctx.resources.displayMetrics
-        val sideMargin = Utils.dipToPixels(if (p.bottomAnchored) 12f else 22f)
+        val sideMargin = Utils.dipToPixels(
+            when {
+                p.bottomAnchored -> 12f
+                style == DialogStyle.IOS27 -> 28f
+                else -> 22f
+            }
+        )
         val bottomMargin = Utils.dipToPixels(14f)
 
         window.setGravity(
@@ -210,7 +216,12 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
             else Gravity.CENTER
         )
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val targetWidth = (dm.widthPixels - sideMargin * 2).coerceAtLeast(Utils.dipToPixels(280f))
+        val rawWidth = (dm.widthPixels - sideMargin * 2).coerceAtLeast(Utils.dipToPixels(272f))
+        val targetWidth = if (style == DialogStyle.IOS27) {
+            rawWidth.coerceAtMost(Utils.dipToPixels(336f))
+        } else {
+            rawWidth
+        }
         window.setLayout(targetWidth, WindowManager.LayoutParams.WRAP_CONTENT)
         val attrs = window.attributes
         attrs.y = if (p.bottomAnchored) bottomMargin else 0
@@ -235,14 +246,21 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
 
         // Keep horizontal padding = 0 on AlertDialogLayout to prevent right-edge clipping
         card.backgroundTintList = null
-        card.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = Utils.dipToPixels(p.cornerDp).toFloat()
-            setColor(p.dialogBg)
-            setStroke(
-                Utils.dipToPixels(if (style == DialogStyle.IOS27) 1.2f else 1f).coerceAtLeast(1),
-                p.dialogBorder
-            )
+        card.background = if (style == DialogStyle.IOS27) {
+            val topTint = if (p.dark) 0xD22C303A.toInt() else 0xF0FFFFFF.toInt()
+            val botTint = if (p.dark) 0xDC16181F.toInt() else 0xE2EEF3FA.toInt()
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(topTint, botTint)).apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = Utils.dipToPixels(p.cornerDp).toFloat()
+                setStroke(Utils.dipToPixels(1.25f).coerceAtLeast(2), p.dialogBorder)
+            }
+        } else {
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = Utils.dipToPixels(p.cornerDp).toFloat()
+                setColor(p.dialogBg)
+                setStroke(Utils.dipToPixels(1f).coerceAtLeast(1), p.dialogBorder)
+            }
         }
         card.setPadding(0, Utils.dipToPixels(22f), 0, Utils.dipToPixels(18f))
 
@@ -254,10 +272,19 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
         val titleTv = findDialogView(card, ctx, "alertTitle") as? TextView
         val titleStr = titleTv?.text?.toString()?.trim().orEmpty()
         if (titleTv != null && titleStr.isNotEmpty()) {
+            titleTv.background = null
+            titleTv.backgroundTintList = null
             val centerTitle = style != DialogStyle.MONET
             titleTv.gravity = if (centerTitle) Gravity.CENTER_HORIZONTAL else Gravity.START
             titleTv.textAlignment = if (centerTitle) View.TEXT_ALIGNMENT_CENTER else View.TEXT_ALIGNMENT_VIEW_START
-            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (style == DialogStyle.MONET) 20f else 18f)
+            titleTv.setTextSize(
+                TypedValue.COMPLEX_UNIT_SP,
+                when (style) {
+                    DialogStyle.MONET -> 20f
+                    DialogStyle.IOS27 -> 17f
+                    else -> 18f
+                }
+            )
             titleTv.setTextColor(p.textPrimary)
             boldTf?.let { titleTv.typeface = it }
             titleTv.layoutParams?.let { tlp ->
@@ -438,12 +465,34 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
                     setTextColor(fgColor)
                     if (boldTf != null) typeface = boldTf else setTypeface(typeface, Typeface.BOLD)
                     setPadding(Utils.dipToPixels(14f), 0, Utils.dipToPixels(14f), 0)
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = btnRadius
-                        setColor(bgColor)
-                        if (style == DialogStyle.IOS27 && !isPrimary) {
-                            setStroke(Utils.dipToPixels(1f).coerceAtLeast(1), p.dialogBorder)
+                    background = if (style == DialogStyle.IOS27) {
+                        val (gTop, gBot, rim) = when {
+                            isPrimary && destructive -> Triple(
+                                if (p.dark) 0xB8FF5C54.toInt() else 0xCCFF5247.toInt(),
+                                if (p.dark) 0x99D92B24.toInt() else 0xB5E0261D.toInt(),
+                                if (p.dark) 0x99FF9E99.toInt() else 0xB8FFABA6.toInt(),
+                            )
+                            isPrimary -> Triple(
+                                if (p.dark) 0xB8269BFF.toInt() else 0xCC1E8FFF.toInt(),
+                                if (p.dark) 0x990066E6.toInt() else 0xB50068E8.toInt(),
+                                if (p.dark) 0x9985C8FF.toInt() else 0xB89ED4FF.toInt(),
+                            )
+                            else -> Triple(
+                                if (p.dark) 0x2EFFFFFF.toInt() else 0xA8FFFFFF.toInt(),
+                                if (p.dark) 0x18FFFFFF.toInt() else 0x70E3E8F2.toInt(),
+                                if (p.dark) 0x3DFFFFFF.toInt() else 0xD8FFFFFF.toInt(),
+                            )
+                        }
+                        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(gTop, gBot)).apply {
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = btnRadius
+                            setStroke(Utils.dipToPixels(1.1f).coerceAtLeast(1), rim)
+                        }
+                    } else {
+                        GradientDrawable().apply {
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = btnRadius
+                            setColor(bgColor)
                         }
                     }
                     isClickable = true
@@ -554,26 +603,26 @@ class ThemedDialogEngine(loader: ClassLoader, preferences: SharedPreferences) :
                     if (dark) {
                         DialogPalette(
                             style = DialogStyle.IOS27, dark = true, bottomAnchored = false,
-                            cornerDp = 26f, buttonCornerDp = 999f,
-                            dialogBg = 0xE61C1E24.toInt(), dialogBorder = 0x38FFFFFF.toInt(),
+                            cornerDp = 32f, buttonCornerDp = 999f,
+                            dialogBg = 0xD61B1D24.toInt(), dialogBorder = 0x4CFFFFFF.toInt(),
                             accent = 0xFF0A84FF.toInt(), onAccent = 0xFFFEFEFE.toInt(),
-                            secondaryBg = 0x26FFFFFF.toInt(), secondaryFg = 0xFFF5F7FA.toInt(),
+                            secondaryBg = 0x24FFFFFF.toInt(), secondaryFg = 0xFFF5F7FA.toInt(),
                             dangerBg = 0xFFFF453A.toInt(),
                             textPrimary = 0xFFFEFEFE.toInt(), textSecondary = 0xC8D8DEE9.toInt(),
-                            divider = 0x24FFFFFF.toInt(), rowBg = 0x1FFFFFFF.toInt(),
-                            dimAmount = 0.48f, blurRadiusDp = 28f,
+                            divider = 0x24FFFFFF.toInt(), rowBg = 0x1CFFFFFF.toInt(),
+                            dimAmount = 0.46f, blurRadiusDp = 34f,
                         )
                     } else {
                         DialogPalette(
                             style = DialogStyle.IOS27, dark = false, bottomAnchored = false,
-                            cornerDp = 26f, buttonCornerDp = 999f,
-                            dialogBg = 0xEDF7F9FC.toInt(), dialogBorder = 0xC8FFFFFF.toInt(),
+                            cornerDp = 32f, buttonCornerDp = 999f,
+                            dialogBg = 0xE6F6F9FD.toInt(), dialogBorder = 0xEBFFFFFF.toInt(),
                             accent = 0xFF007AFF.toInt(), onAccent = 0xFFFEFEFE.toInt(),
-                            secondaryBg = 0x14000000.toInt(), secondaryFg = 0xFF14181F.toInt(),
+                            secondaryBg = 0x16000000.toInt(), secondaryFg = 0xFF14181F.toInt(),
                             dangerBg = 0xFFFF3B30.toInt(),
                             textPrimary = 0xFF121418.toInt(), textSecondary = 0xB52A303C.toInt(),
-                            divider = 0x1A000000.toInt(), rowBg = 0x10000000.toInt(),
-                            dimAmount = 0.32f, blurRadiusDp = 28f,
+                            divider = 0x1A000000.toInt(), rowBg = 0x12000000.toInt(),
+                            dimAmount = 0.30f, blurRadiusDp = 34f,
                         )
                     }
                 }

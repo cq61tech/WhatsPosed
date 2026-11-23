@@ -1476,7 +1476,6 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
             "search_bar", "search_bar_inner", "my_search_bar", "search_pill"
         )
         private val GLASS_OVERLAY_NAMES = setOf(
-            "design_bottom_sheet", "parentPanel", "alertTitle", "customPanel",
             "reactions_tray_layout", "reaction_tray", "popup_window", "attach_sheet_container"
         )
         private val INFO_ACTION_TILE_NAMES = setOf(
