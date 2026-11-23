@@ -484,15 +484,10 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
             .filter { (it.visibility == View.VISIBLE || it.tag == "miuix_proxied") && !it.text.isNullOrBlank() }
 
         val buttonPanel = findDialogView(card, ctx, "buttonPanel") as? ViewGroup
-        if (visibleButtons.isNotEmpty() && buttonPanel != null) {
-            buttonPanel.setPadding(padH, Utils.dipToPixels(16f), padH, 0)
-            val existingRow = buttonPanel.findViewWithTag<View>("miuix_btn_row")
-            if (existingRow != null) {
-                buttonPanel.removeView(existingRow)
-            }
-            for (i in 0 until buttonPanel.childCount) {
-                buttonPanel.getChildAt(i).visibility = View.GONE
-            }
+        val cardGroup = card as? ViewGroup
+        if (visibleButtons.isNotEmpty() && cardGroup != null) {
+            buttonPanel?.visibility = View.GONE
+            cardGroup.findViewWithTag<View>("miuix_btn_row")?.let { cardGroup.removeView(it) }
             visibleButtons.forEach { it.tag = "miuix_proxied" }
 
             val posText = btnPos?.text?.toString().orEmpty()
@@ -564,7 +559,13 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                 miuiRow.addView(pill, plp)
             }
 
-            buttonPanel.addView(miuiRow)
+            val rowLp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(padH, Utils.dipToPixels(18f), padH, 0)
+            }
+            cardGroup.addView(miuiRow, rowLp)
         }
 
         if (config.miSans) {
