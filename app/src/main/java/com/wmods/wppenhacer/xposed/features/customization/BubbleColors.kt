@@ -18,11 +18,14 @@ class BubbleColors(loader: ClassLoader, preferences: SharedPreferences) :
     override fun doHook() {
         val properties = Utils.getProperties(xprefs, "custom_css", "custom_filters")
         val isIos27 = ThemeCoordinator.isIos27(xprefs)
+        val isMiuix = ThemeCoordinator.isMiuix(xprefs)
         val ios27Bubbles = isIos27 && xprefs.getBoolean("ios27_bubbles", true)
-        val bubbleColor = !isIos27 && xprefs.getBoolean("bubble_color", false)
-        val propEnabled = !isIos27 && properties.getProperty("bubble_colors") == "true"
+        val miuixBubbles = isMiuix && xprefs.getBoolean("miuix_bubbles", true)
+        val miuixGreen = xprefs.getString("miuix_accent_mode", "blue") == "green"
+        val bubbleColor = !isIos27 && !isMiuix && xprefs.getBoolean("bubble_color", false)
+        val propEnabled = !isIos27 && !isMiuix && properties.getProperty("bubble_colors") == "true"
 
-        if (!ios27Bubbles && !bubbleColor && !propEnabled) return
+        if (!ios27Bubbles && !miuixBubbles && !bubbleColor && !propEnabled) return
 
         val manualLeftColor = if (bubbleColor) xprefs.getInt("bubble_left", 0)
         else if (propEnabled) DesignUtils.checkSystemColor(properties.getProperty("bubble_left", "#00000000")).toColorInt()
@@ -32,13 +35,21 @@ class BubbleColors(loader: ClassLoader, preferences: SharedPreferences) :
         else if (propEnabled) DesignUtils.checkSystemColor(properties.getProperty("bubble_right", "#00000000")).toColorInt()
         else 0
 
-        fun resolveRightColor(): Int = if (ios27Bubbles) {
-            if (DesignUtils.isNightMode()) 0xFF005C4B.toInt() else 0xFFD9FDD3.toInt()
-        } else manualRightColor
+        fun resolveRightColor(): Int = when {
+            ios27Bubbles -> if (DesignUtils.isNightMode()) 0xFF005C4B.toInt() else 0xFFD9FDD3.toInt()
+            miuixBubbles -> if (miuixGreen) {
+                if (DesignUtils.isNightMode()) 0xFF145C3E.toInt() else 0xFFD9FBE3.toInt()
+            } else {
+                if (DesignUtils.isNightMode()) 0xFF134886.toInt() else 0xFFDCEBFF.toInt()
+            }
+            else -> manualRightColor
+        }
 
-        fun resolveLeftColor(): Int = if (ios27Bubbles) {
-            if (DesignUtils.isNightMode()) 0xFF202224.toInt() else 0xFFFFFFFF.toInt()
-        } else manualLeftColor
+        fun resolveLeftColor(): Int = when {
+            ios27Bubbles -> if (DesignUtils.isNightMode()) 0xFF202224.toInt() else 0xFFFFFFFF.toInt()
+            miuixBubbles -> if (DesignUtils.isNightMode()) 0xFF222428.toInt() else 0xFFF4F6FA.toInt()
+            else -> manualLeftColor
+        }
 
         val dateWrapper = loadBallonDateDrawable(classLoader)
         dateWrapper.hook {

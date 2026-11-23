@@ -2,6 +2,12 @@ package com.wmods.wppenhacer.ui.compose
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.remember
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.Image
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -57,6 +63,7 @@ class ThemesPrefs(ctx: Context) {
         val saved = sp.getString("active_ui_theme", null)
         when {
             !saved.isNullOrBlank() -> saved
+            sp.getBoolean("miuix_enabled", false) -> "miuix"
             sp.getBoolean("ios27_enabled", false) -> "ios27"
             sp.getBoolean("me_enabled", false) -> "material_expressive"
             else -> "default"
@@ -75,11 +82,41 @@ class ThemesPrefs(ctx: Context) {
     val ios27Typography = BoolState(sp, "ios27_typography", true)
     val ios27ContactCards = BoolState(sp, "ios27_contact_cards", true)
 
+    val miuixWallpaperEnabled = BoolState(sp, "miuix_wallpaper_enabled", true)
+    val miuixWallpaperId = TextState(sp, "miuix_wallpaper_id", "wp1")
+    val miuixWallpaperDim = IntState(sp, "miuix_wallpaper_dim", 38)
+    val miuixAccentMode = TextState(sp, "miuix_accent_mode", "blue")
+    val miuixTypography = BoolState(sp, "miuix_typography", true)
+    val miuixDialogs = BoolState(sp, "miuix_dialogs", true)
+    val miuixSquircleUi = BoolState(sp, "miuix_squircle_ui", true)
+    val miuixBubbles = BoolState(sp, "miuix_bubbles", true)
+
     fun selectTheme(themeId: String) {
         activeTheme.value = themeId
         val editor = sp.edit()
         when (themeId) {
+            "miuix" -> {
+                editor.putBoolean("miuix_enabled", true)
+                editor.putBoolean("ios27_enabled", false)
+                editor.putBoolean("me_enabled", false)
+                editor.putBoolean("liquid_glass_chat", false)
+                editor.putBoolean("floating_bottom_bar", true)
+                editor.putString("fbb_preset", "miuix")
+                editor.putInt("floating_bottom_bar_radius", 30)
+                editor.putInt("fbb_bottom_margin", 10)
+                editor.putInt("fbb_side_margin", 10)
+                editor.putInt("fbb_pad_v", 5)
+                editor.putInt("fbb_pad_h", 6)
+                editor.putString("fbb_indicator", "miuix")
+                editor.putBoolean("fbb_glass", true)
+                editor.putInt("fbb_glass_alpha", 28)
+                editor.putBoolean("fbb_shadow", true)
+                editor.putInt("fbb_indicator_color", 0)
+                editor.putInt("fbb_icon_selected", 0)
+                editor.putInt("fbb_icon_unselected", 0)
+            }
             "material_expressive" -> {
+                editor.putBoolean("miuix_enabled", false)
                 editor.putBoolean("me_enabled", true)
                 editor.putBoolean("ios27_enabled", false)
                 // Clean up iOS 27 chat glass & apply Material You signature Pill Dock (freely editable afterwards)
@@ -99,6 +136,7 @@ class ThemesPrefs(ctx: Context) {
                 editor.putInt("fbb_icon_unselected", 0)
             }
             "ios27" -> {
+                editor.putBoolean("miuix_enabled", false)
                 editor.putBoolean("me_enabled", false)
                 editor.putBoolean("ios27_enabled", true)
                 // Apply iOS 27 signature Liquid Glass Dock + chat islands + iOS context menu
@@ -120,6 +158,7 @@ class ThemesPrefs(ctx: Context) {
                 editor.putInt("fbb_icon_unselected", 0)
             }
             else -> {
+                editor.putBoolean("miuix_enabled", false)
                 editor.putBoolean("me_enabled", false)
                 editor.putBoolean("ios27_enabled", false)
                 editor.putBoolean("liquid_glass_chat", false)
@@ -184,6 +223,24 @@ fun ThemesScreen(prefs: ThemesPrefs, onBack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // 0) MIUIx (MIUI 12-14) Theme Card
+            ThemePackCard(
+                title = stringResource(R.string.theme_miuix_title),
+                badge = "BETA",
+                description = stringResource(R.string.theme_miuix_desc),
+                selected = current == "miuix",
+                onSelect = { prefs.selectTheme("miuix") },
+                preview = { MiuixMiniPreview(prefs.miuixAccentMode.value == "green") },
+                footer = {
+                    if (current == "miuix") {
+                        Spacer(Modifier.height(10.dp))
+                        MiuixOptionsPanel(prefs) {
+                            ctx.startActivity(Intent(ctx, FloatingBarActivity::class.java))
+                        }
+                    }
+                }
+            )
+
             // 1) iOS 27 (Liquid Glass) Theme Card
             ThemePackCard(
                 title = stringResource(R.string.theme_ios27_title),
@@ -259,9 +316,9 @@ fun ThemesScreen(prefs: ThemesPrefs, onBack: () -> Unit) {
                         fontWeight = FontWeight.SemiBold,
                         color = cs.onSurface
                     )
-                    if (current == "ios27") {
+                    if (current == "ios27" || current == "miuix") {
                         Text(
-                            text = stringResource(R.string.theme_ios27_conflict_note),
+                            text = stringResource(if (current == "miuix") R.string.theme_miuix_conflict_note else R.string.theme_ios27_conflict_note),
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.primary
                         )
@@ -605,5 +662,189 @@ private fun ThemeToggleRow(
             modifier = Modifier.weight(1f)
         )
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
+private fun MiuixMiniPreview(greenAccent: Boolean) {
+    val accent = if (greenAccent) Color(0xFF25D366) else Color(0xFF0D84FF)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(118.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF2B6EF3), Color(0xFF5D6FE8), Color(0xFFE38EA8))
+                )
+            )
+            .padding(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "WhatsApp",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Box(Modifier.size(18.dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.28f)))
+                    Box(Modifier.size(18.dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.28f)))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = Color.White.copy(alpha = 0.34f),
+                    border = BorderStroke(1.3.dp, accent)
+                ) {
+                    Text("Chats", style = MaterialTheme.typography.labelSmall, color = Color.White, modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp))
+                }
+                Surface(shape = RoundedCornerShape(999.dp), color = Color.White.copy(alpha = 0.20f)) {
+                    Text("Updates", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp))
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.26f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.45f)).padding(horizontal = 10.dp, vertical = 3.dp)) {
+                            Box(Modifier.size(width = 14.dp, height = 5.dp).clip(RoundedCornerShape(999.dp)).background(accent))
+                        }
+                        Box(Modifier.size(width = 14.dp, height = 5.dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.65f)))
+                        Box(Modifier.size(width = 14.dp, height = 5.dp).clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.65f)))
+                    }
+                }
+                Spacer(Modifier.size(8.dp))
+                Box(Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(accent))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiuixOptionsPanel(prefs: ThemesPrefs, onOpenFloatingBar: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    val wpItems = listOf("none", "wp1", "wp2", "wp3", "wp4")
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = cs.surface.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, cs.outlineVariant.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(stringResource(R.string.theme_miuix_options_header), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = cs.primary)
+            Text(stringResource(R.string.miuix_wallpaper_picker), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                wpItems.forEach { wpId ->
+                    val selected = if (wpId == "none") {
+                        !prefs.miuixWallpaperEnabled.value || prefs.miuixWallpaperId.value == "none"
+                    } else {
+                        prefs.miuixWallpaperEnabled.value && prefs.miuixWallpaperId.value == wpId
+                    }
+                    val bmp = remember(wpId) {
+                        if (wpId == "none") null else runCatching {
+                            ctx.assets.open("miuix_wallpapers/$wpId.jpg").use {
+                                BitmapFactory.decodeStream(it)?.asImageBitmap()
+                            }
+                        }.getOrNull()
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = cs.surfaceVariant,
+                        border = BorderStroke(if (selected) 2.2.dp else 1.dp, if (selected) cs.primary else cs.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.weight(1f).height(64.dp).clickable {
+                            if (wpId == "none") {
+                                prefs.miuixWallpaperEnabled.value = false
+                                prefs.miuixWallpaperId.value = "none"
+                            } else {
+                                prefs.miuixWallpaperEnabled.value = true
+                                prefs.miuixWallpaperId.value = wpId
+                            }
+                        }
+                    ) {
+                        if (bmp != null) {
+                            Image(bitmap = bmp, contentDescription = wpId, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.miuix_wallpaper_off), style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (prefs.miuixWallpaperEnabled.value && prefs.miuixWallpaperId.value != "none") {
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(stringResource(R.string.miuix_wallpaper_dim), style = MaterialTheme.typography.bodySmall, color = cs.onSurface)
+                        Text("${prefs.miuixWallpaperDim.value}%", style = MaterialTheme.typography.labelMedium, color = cs.primary)
+                    }
+                    Slider(
+                        value = prefs.miuixWallpaperDim.value.toFloat(),
+                        onValueChange = { prefs.miuixWallpaperDim.value = it.toInt().coerceIn(10, 80) },
+                        valueRange = 10f..80f
+                    )
+                }
+            }
+
+            Text(stringResource(R.string.miuix_accent_label), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val isBlue = prefs.miuixAccentMode.value != "green"
+                Surface(
+                    onClick = { prefs.miuixAccentMode.value = "blue" },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isBlue) Color(0xFF0D84FF).copy(alpha = 0.16f) else cs.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(if (isBlue) 1.6.dp else 1.dp, if (isBlue) Color(0xFF0D84FF) else cs.outlineVariant),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.miuix_accent_blue), style = MaterialTheme.typography.labelMedium, fontWeight = if (isBlue) FontWeight.Bold else FontWeight.Medium, color = if (isBlue) Color(0xFF0D84FF) else cs.onSurface, modifier = Modifier.padding(vertical = 9.dp, horizontal = 10.dp))
+                }
+                Surface(
+                    onClick = { prefs.miuixAccentMode.value = "green" },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (!isBlue) Color(0xFF25D366).copy(alpha = 0.16f) else cs.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(if (!isBlue) 1.6.dp else 1.dp, if (!isBlue) Color(0xFF25D366) else cs.outlineVariant),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.miuix_accent_green), style = MaterialTheme.typography.labelMedium, fontWeight = if (!isBlue) FontWeight.Bold else FontWeight.Medium, color = if (!isBlue) Color(0xFF25D366) else cs.onSurface, modifier = Modifier.padding(vertical = 9.dp, horizontal = 10.dp))
+                }
+            }
+
+            ThemeToggleRow(stringResource(R.string.miuix_opt_misans), prefs.miuixTypography.value) { prefs.miuixTypography.value = it }
+            ThemeToggleRow(stringResource(R.string.miuix_opt_dialogs), prefs.miuixDialogs.value) { prefs.miuixDialogs.value = it }
+            ThemeToggleRow(stringResource(R.string.miuix_opt_squircle), prefs.miuixSquircleUi.value) { prefs.miuixSquircleUi.value = it }
+            ThemeToggleRow(stringResource(R.string.miuix_opt_bubbles), prefs.miuixBubbles.value) { prefs.miuixBubbles.value = it }
+
+            Spacer(Modifier.height(4.dp))
+            Button(onClick = onOpenFloatingBar, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.miuix_tweak_floating_bar))
+            }
+        }
     }
 }

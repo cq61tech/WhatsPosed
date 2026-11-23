@@ -376,6 +376,11 @@ fun FloatingBarScreen(prefs: FloatingBarPrefs, onBack: () -> Unit) {
                 stringResource(R.string.wpfb_preset_material_pill),
                 stringResource(R.string.wpfb_preset_material_pill_sum),
             ) { prefs.applyPreset("material_pill") }
+            PresetRow(
+                prefs.preset.value == "miuix",
+                stringResource(R.string.wpfb_preset_miuix),
+                stringResource(R.string.wpfb_preset_miuix_sum),
+            ) { prefs.applyPreset("miuix") }
         }
 
         SectionCard(stringResource(R.string.wpfb_geometry)) {

@@ -727,4 +727,21 @@
     <string name="theme_ios27_conflict_note">iOS 27 automatically overrides Monet, manual colors, custom toolbar &amp; custom bubble colors so nothing clashes.</string>
     <string name="wpfb_preset_material_pill">Material You Pill</string>
     <string name="wpfb_preset_material_pill_sum">Dynamic Monet capsule with a full-height active pill wrapping icon &amp; label</string>
+    <string name="theme_miuix_title">MIUIx (MIUI 12–14)</string>
+    <string name="theme_miuix_desc">Xiaomi MIUI 12–14 aesthetic with bundled MiSans font, built-in Xiaomi home wallpapers, frosted filter pills, squircle FAB, MIUI 14 bottom dialogs, and a frosted dock.</string>
+    <string name="theme_miuix_conflict_note">MIUIx is active: legacy home wallpaper, Monet, manual colors, and bubble overrides are automatically paused to avoid conflicts.</string>
+    <string name="theme_miuix_options_header">MIUIx Customization</string>
+    <string name="miuix_wallpaper_picker">Home Wallpaper (Bundled)</string>
+    <string name="miuix_wallpaper_off">Clean</string>
+    <string name="miuix_wallpaper_dim">Readability veil</string>
+    <string name="miuix_accent_label">Accent Color</string>
+    <string name="miuix_accent_blue">MIUI Blue</string>
+    <string name="miuix_accent_green">WhatsApp Green</string>
+    <string name="miuix_opt_misans">Bundled MiSans typography</string>
+    <string name="miuix_opt_dialogs">MIUI 14 bottom-anchored dialogs</string>
+    <string name="miuix_opt_squircle">MIUI squircle FAB &amp; input focus ring</string>
+    <string name="miuix_opt_bubbles">MIUIx chat bubbles</string>
+    <string name="miuix_tweak_floating_bar">Customize MIUIx Frosted Dock</string>
+    <string name="wpfb_preset_miuix">MIUIx Frosted Dock</string>
+    <string name="wpfb_preset_miuix_sum">Wide translucent MIUI frosted dock with a glowing rounded active tab pill</string>
 </resources>

@@ -653,4 +653,21 @@
     <string name="theme_ios27_conflict_note">iOS 27 açıkken çakışma olmaması için Monet, manuel renkler, özel üst bar ve eski baloncuk renkleri otomatik duraklatılır.</string>
     <string name="wpfb_preset_material_pill">Material You Hap</string>
     <string name="wpfb_preset_material_pill_sum">İkon ve etiketi birlikte saran tam boy dinamik Monet hap göstergeli dock</string>
+    <string name="theme_miuix_title">MIUIx (MIUI 12–14)</string>
+    <string name="theme_miuix_desc">Gömülü MiSans yazı tipi, yerleşik Xiaomi ana ekran duvar kağıtları, kenarlıklı buzlu filtre hapları, MIUI squircle FAB, alta yaslı MIUI 14 diyalogları ve buzlu dock.</string>
+    <string name="theme_miuix_conflict_note">MIUIx etkin: Çakışma olmaması için eski ana ekran duvar kağıdı, Monet, manuel renkler ve baloncuk ayarları otomatik duraklatıldı.</string>
+    <string name="theme_miuix_options_header">MIUIx Özelleştirme</string>
+    <string name="miuix_wallpaper_picker">Ana Ekran Duvar Kağıdı (Yerleşik)</string>
+    <string name="miuix_wallpaper_off">Sade</string>
+    <string name="miuix_wallpaper_dim">Okunabilirlik perdesi</string>
+    <string name="miuix_accent_label">Vurgu Rengi</string>
+    <string name="miuix_accent_blue">MIUI Mavisi</string>
+    <string name="miuix_accent_green">WhatsApp Yeşili</string>
+    <string name="miuix_opt_misans">Gömülü MiSans yazı tipi</string>
+    <string name="miuix_opt_dialogs">Alta yaslı MIUI 14 diyalogları</string>
+    <string name="miuix_opt_squircle">MIUI squircle FAB ve odaklanan giriş kutusu</string>
+    <string name="miuix_opt_bubbles">MIUIx sohbet baloncukları</string>
+    <string name="miuix_tweak_floating_bar">MIUIx Buzlu Dock Özelleştir</string>
+    <string name="wpfb_preset_miuix">MIUIx Buzlu Dock</string>
+    <string name="wpfb_preset_miuix_sum">Seçili sekmeyi yumuşak buzlu kapsülle saran geniş yarı saydam MIUI dock</string>
 </resources>

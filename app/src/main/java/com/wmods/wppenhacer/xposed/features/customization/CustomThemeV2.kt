@@ -15,6 +15,11 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import com.wmods.wppenhacer.xposed.core.FeatureLoader
+import android.widget.ImageView
+import android.widget.FrameLayout
+import android.graphics.drawable.GradientDrawable
+import android.graphics.BitmapFactory
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.toDrawable
@@ -170,9 +175,17 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
     }
 
     private fun loadAndApplyColorsWallpaper() {
-        val customWallpaper = xprefs.getBoolean("wallpaper", false)
+        val isMiuix = ThemeCoordinator.isMiuix(xprefs)
+        val miuixWallpaper = ThemeCoordinator.isMiuixWallpaperActive(xprefs)
+        if (miuixWallpaper) {
+            wallAlpha = HashMap(IColors.colors).also { replaceTransparency(it, 0.0f) }
+            navAlpha = HashMap(IColors.colors).also { replaceTransparency(it, 0.0f) }
+            toolbarAlpha = HashMap(IColors.colors).also { replaceTransparency(it, 0.0f) }
+            return
+        }
+        val customWallpaper = !isMiuix && xprefs.getBoolean("wallpaper", false)
 
-        if (customWallpaper || properties?.containsKey("wallpaper") == true) {
+        if (customWallpaper || (!isMiuix && properties?.containsKey("wallpaper") == true)) {
             wallAlpha = HashMap(IColors.colors)
             val wallpaperAlpha = if (customWallpaper) xprefs.getInt("wallpaper_alpha", 30)
             else Utils.tryParseInt(properties?.getProperty("wallpaper_alpha"), 30)
@@ -194,10 +207,15 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
 
     @Throws(Exception::class)
     private fun hookWallpaper() {
-        if (!xprefs.getBoolean("wallpaper", false)) return
+        val isMiuix = ThemeCoordinator.isMiuix(xprefs)
+        val miuixWallpaper = ThemeCoordinator.isMiuixWallpaperActive(xprefs)
+        val legacyWallpaper = !isMiuix && xprefs.getBoolean("wallpaper", false)
+        if (!miuixWallpaper && !legacyWallpaper) return
 
         loadAndApplyColorsWallpaper()
-        WallpaperView.prefetch(Utils.application, xprefs, properties!!)
+        if (legacyWallpaper) {
+            WallpaperView.prefetch(Utils.application, xprefs, properties!!)
+        }
         val homeActivityClass = WppCore.homeActivityClass
         val actionModeBarId = Utils.getID("action_mode_bar", "id")
 
@@ -208,7 +226,10 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
         }.hook {
             after {
                 val activity = instance as Activity
-                if (ContextCompat.checkSelfPermission(
+                val root = activity.findViewById<View>(Utils.getID("root_view", "id"))
+                if (miuixWallpaper) {
+                    injectMiuixWallpaper(root)
+                } else if (ContextCompat.checkSelfPermission(
                         activity,
                         Manifest.permission.READ_MEDIA_IMAGES
                     ) == PackageManager.PERMISSION_GRANTED
@@ -217,7 +238,7 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
                         Manifest.permission.READ_EXTERNAL_STORAGE
                     ) == PackageManager.PERMISSION_GRANTED
                 ) {
-                    injectWallpaper(activity.findViewById(Utils.getID("root_view", "id")))
+                    injectWallpaper(root)
                 }
             }
         }
@@ -349,9 +370,10 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
         var textColorInt = xprefs.getInt("text_color", 0)
         var backgroundColorInt = xprefs.getInt("background_color", 0)
         val isIos27Theme = ThemeCoordinator.isIos27(xprefs)
-        val changeColorEnabled = isIos27Theme || xprefs.getBoolean("changecolor", false)
+        val isMiuixTheme = ThemeCoordinator.isMiuix(xprefs)
+        val changeColorEnabled = isIos27Theme || isMiuixTheme || xprefs.getBoolean("changecolor", false)
         val changeColorMode = xprefs.getString("changecolor_mode", "manual")
-                val useMonetColors = !isIos27Theme && changeColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+        val useMonetColors = !isIos27Theme && !isMiuixTheme && changeColorEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             && changeColorMode == "monet"
 
         if (isIos27Theme) {
@@ -364,6 +386,16 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
             } else {
                 0xFFFFFFFF.toInt()
             }
+        } else if (isMiuixTheme) {
+            val dark = DesignUtils.isNightMode()
+            val greenAccent = xprefs.getString("miuix_accent_mode", "blue") == "green"
+            primaryColorInt = if (greenAccent) {
+                if (dark) 0xFF2CE072.toInt() else 0xFF25D366.toInt()
+            } else {
+                if (dark) 0xFF2196FF.toInt() else 0xFF0D84FF.toInt()
+            }
+            textColorInt = if (dark) 0xFFFFFFFF.toInt() else 0xFF111317.toInt()
+            backgroundColorInt = if (dark) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
         }
 
         if (useMonetColors) {
@@ -510,6 +542,87 @@ class CustomThemeV2(loader: ClassLoader, preferences: SharedPreferences) :
         replaceColors(toolbar, toolbarAlpha)
         val frameLayout = WallpaperView(rootView.context, xprefs, properties!!)
         rootView.addView(frameLayout, 0)
+    }
+
+    private fun injectMiuixWallpaper(view: View?) {
+        val content = view as? ViewGroup ?: return
+        val rootView = content.getChildAt(0) as? ViewGroup ?: return
+
+        val header = content.findViewById<ViewGroup>(Utils.getID("header", "id"))
+        header?.background = null
+        header?.backgroundTintList = null
+        val toolbarContainer = content.findViewById<ViewGroup>(Utils.getID("toolbar_container", "id"))
+        if (toolbarContainer != null) {
+            ReflectionUtils.setAdditionalInstanceField(toolbarContainer, FIELD_WALLPAPER_TOOLBAR, true)
+            toolbarContainer.background = null
+            toolbarContainer.backgroundTintList = null
+        }
+        val toolbar = content.findViewById<View>(Utils.getID("toolbar", "id"))
+        val firstChild = header?.getChildAt(0)
+        if (firstChild != null && toolbar != firstChild) {
+            firstChild.background = null
+            firstChild.backgroundTintList = null
+        }
+        if (toolbar != null) {
+            ReflectionUtils.setAdditionalInstanceField(toolbar, FIELD_WALLPAPER_TOOLBAR, true)
+            toolbar.background = null
+            toolbar.backgroundTintList = null
+            replaceColors(toolbar, toolbarAlpha)
+        }
+
+        val wpId = xprefs.getString("miuix_wallpaper_id", "wp1") ?: "wp1"
+        val dimPct = xprefs.getInt("miuix_wallpaper_dim", 38).coerceIn(10, 82)
+        val dark = DesignUtils.isNightMode()
+
+        val container = FrameLayout(rootView.context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            isClickable = false
+            isFocusable = false
+        }
+
+        val bitmap = runCatching {
+            FeatureLoader.moduleContext.assets.open("miuix_wallpapers/$wpId.jpg").use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        }.getOrNull()
+
+        val img = ImageView(rootView.context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            if (bitmap != null) {
+                setImageBitmap(bitmap)
+            } else {
+                setBackgroundColor(if (dark) 0xFF0A0F1A.toInt() else 0xFFEAF2FF.toInt())
+            }
+        }
+        container.addView(img)
+
+        // Adaptive readability scrim (stronger at top & bottom for crisp contrast)
+        val midAlpha = ((dimPct / 100f) * 255f).toInt().coerceIn(24, 215)
+        val edgeAlpha = (midAlpha + 36).coerceIn(40, 235)
+        val baseRgb = if (dark) 0x090C12 else 0xF7F9FC
+        val scrim = View(rootView.context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    (edgeAlpha shl 24) or baseRgb,
+                    (midAlpha shl 24) or baseRgb,
+                    (edgeAlpha shl 24) or baseRgb
+                )
+            )
+        }
+        container.addView(scrim)
+        rootView.addView(container, 0)
     }
 
     private fun mapColor(color: Int): Int =

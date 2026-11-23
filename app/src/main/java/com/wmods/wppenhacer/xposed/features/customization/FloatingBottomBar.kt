@@ -88,6 +88,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val glass: Boolean,
         val liquid: Boolean,
         val materialPill: Boolean,
+        val miuix: Boolean,
         val glassAlpha: Int,
         val shadow: Boolean,
         val hideOnScroll: Boolean,
@@ -98,7 +99,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             for (v in intArrayOf(
                 iconSizeDp, if (ovalIndicator) 1 else 0, indicatorColor, selectedColor,
                 unselectedColor, if (hideLabels) 1 else 0, textSizeSp, labelGapDp,
-                if (liquid) 1 else 0, if (materialPill) 1 else 0,
+                if (liquid) 1 else 0, if (materialPill) 1 else 0, if (miuix) 1 else 0,
             )) h = 31 * h + v
             return h
         }
@@ -124,6 +125,7 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         val preset = xprefs.getString("fbb_preset", "classic") ?: "classic"
         val isLiquid = preset == "liquid"
         val isMaterialPill = preset == "material_pill"
+        val isMiuix = preset == "miuix"
         return Style(
             radiusDp = xprefs.getInt("floating_bottom_bar_radius", CORNER_RADIUS_DP),
             bottomMarginDp = xprefs.getInt("fbb_bottom_margin", 16),
@@ -131,17 +133,18 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
             padVDp = xprefs.getInt("fbb_pad_v", 0),
             padHDp = xprefs.getInt("fbb_pad_h", 0),
             iconSizeDp = xprefs.getInt("fbb_icon_size", 0),
-            ovalIndicator = isLiquid || (!isMaterialPill && xprefs.getString("fbb_indicator", "default") == "oval"),
+            ovalIndicator = isLiquid || (!isMaterialPill && !isMiuix && xprefs.getString("fbb_indicator", "default") == "oval"),
             indicatorColor = xprefs.getInt("fbb_indicator_color", 0),
             selectedColor = xprefs.getInt("fbb_icon_selected", 0),
             unselectedColor = xprefs.getInt("fbb_icon_unselected", 0),
             hideLabels = xprefs.getBoolean("fbb_hide_labels", false),
             textSizeSp = xprefs.getInt("fbb_text_size", 0),
             labelGapDp = xprefs.getInt("fbb_label_gap", 0),
-            glass = isLiquid || (!isMaterialPill && xprefs.getBoolean("fbb_glass", false)),
+            glass = isLiquid || isMiuix || (!isMaterialPill && xprefs.getBoolean("fbb_glass", false)),
             liquid = isLiquid,
             materialPill = isMaterialPill,
-            glassAlpha = xprefs.getInt("fbb_glass_alpha", if (isLiquid) 22 else 35),
+            miuix = isMiuix,
+            glassAlpha = xprefs.getInt("fbb_glass_alpha", if (isLiquid) 22 else if (isMiuix) 28 else 35),
             shadow = xprefs.getBoolean("fbb_shadow", true),
             hideOnScroll = xprefs.getBoolean("fbb_hide_scroll", false),
             fade = xprefs.getString("fbb_hide_mode", "slide") == "fade",
@@ -591,9 +594,18 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         styledViews[bar] = sig
 
         val mp = if (style.materialPill) resolveMaterialPillPalette(bar.context, light, style) else null
-        val autoSelected = mp?.activeFg ?: if (light) Color.BLACK else Color.WHITE
-        val autoUnselected = mp?.inactiveFg ?: ((autoSelected and 0x00FFFFFF) or (0x99 shl 24))
-        val customColors = mp != null || style.selectedColor != 0 || style.unselectedColor != 0
+        val miuixAccent = if (style.miuix) {
+            if (xprefs.getString("miuix_accent_mode", "blue") == "green") {
+                if (light) 0xFF1DB954.toInt() else 0xFF2CE072.toInt()
+            } else {
+                if (light) 0xFF0D84FF.toInt() else 0xFF4DA6FF.toInt()
+            }
+        } else 0
+        val autoSelected = mp?.activeFg ?: if (miuixAccent != 0) miuixAccent else if (light) Color.BLACK else Color.WHITE
+        val autoUnselected = mp?.inactiveFg ?: if (style.miuix) {
+            if (light) 0xB822262E.toInt() else 0xC8E4E9F2.toInt()
+        } else ((autoSelected and 0x00FFFFFF) or (0x99 shl 24))
+        val customColors = mp != null || style.miuix || style.selectedColor != 0 || style.unselectedColor != 0
         val selected = mp?.activeFg ?: if (style.selectedColor != 0) style.selectedColor else autoSelected
         val unselected = mp?.inactiveFg ?: if (style.unselectedColor != 0) style.unselectedColor else autoUnselected
         val csl = tintList(selected, unselected)
@@ -613,6 +625,9 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         if (mp != null) {
             callApi(bar, "setItemActiveIndicatorEnabled", Boolean::class.javaPrimitiveType!!, false)
             applyMaterialPillTabs(bar, mp)
+        } else if (style.miuix) {
+            callApi(bar, "setItemActiveIndicatorEnabled", Boolean::class.javaPrimitiveType!!, false)
+            applyMiuixPillTabs(bar, light, style)
         } else if (style.indicatorColor != 0) {
             callApi(
                 bar, "setItemActiveIndicatorColor", ColorStateList::class.java,
@@ -673,8 +688,44 @@ class FloatingBottomBar(loader: ClassLoader, preferences: SharedPreferences) :
         return work
     }
 
+    private fun applyMiuixPillTabs(bar: ViewGroup, light: Boolean, style: Style) {
+        val menuGroup = if (bar.childCount == 1 && bar.getChildAt(0) is ViewGroup) {
+            bar.getChildAt(0) as ViewGroup
+        } else {
+            bar
+        }
+        val fill = if (style.indicatorColor != 0) {
+            style.indicatorColor
+        } else if (light) {
+            0x8CFFFFFF.toInt()
+        } else {
+            0x33FFFFFF.toInt()
+        }
+        val stroke = if (light) 0xAAFFFFFF.toInt() else 0x42FFFFFF.toInt()
+        val hPad = Utils.dipToPixels(6f)
+        val vPad = Utils.dipToPixels(4f)
+        for (i in 0 until menuGroup.childCount) {
+            val child = menuGroup.getChildAt(i) as? ViewGroup ?: continue
+            val selectedDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = Utils.dipToPixels(24f).toFloat()
+                setColor(fill)
+                setStroke(Utils.dipToPixels(1f).coerceAtLeast(1), stroke)
+            }
+            val states = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_selected), selectedDrawable)
+                addState(intArrayOf(android.R.attr.state_checked), selectedDrawable)
+                addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+            }
+            child.background = states
+            if (child.paddingLeft < hPad || child.paddingTop < vPad) {
+                child.setPadding(hPad, vPad, hPad, vPad)
+            }
+        }
+    }
+
     private fun styleIndicator(view: View, style: Style, light: Boolean) {
-        if (style.materialPill) {
+        if (style.materialPill || style.miuix) {
             view.background = null
             view.alpha = 0f
             return

@@ -89,6 +89,21 @@ class FloatingBarPrefs(ctx: Context) {
                 iconUnselected.value = 0
             }
 
+            "miuix" -> {
+                radius.value = 30
+                bottomMargin.value = 10
+                sideMargin.value = 10
+                padV.value = 5
+                padH.value = 6
+                indicator.value = "miuix"
+                glass.value = true
+                glassAlpha.value = 28
+                shadow.value = true
+                indicatorColor.value = 0
+                iconSelected.value = 0
+                iconUnselected.value = 0
+            }
+
             "liquid" -> {
                 radius.value = 34
                 bottomMargin.value = 18
