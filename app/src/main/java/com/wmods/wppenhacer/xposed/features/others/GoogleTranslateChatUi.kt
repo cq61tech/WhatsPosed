@@ -129,7 +129,7 @@ internal class GoogleTranslateChatUi(
             )
         }
         MenuHome.addMenuItem { menu, activity ->
-            if (!MenuHome.isHubEnabled(xprefs) && menu.findItem(R.string.google_translate) == null) {
+            if (!MenuHome.isHubEnabled() && menu.findItem(R.string.google_translate) == null) {
                 menu.add(0, R.string.google_translate, 0, "Google Translate")
                     .setOnMenuItemClickListener { showSettings(activity, null); true }
             }

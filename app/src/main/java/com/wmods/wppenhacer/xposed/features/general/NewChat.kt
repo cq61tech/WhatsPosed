@@ -98,7 +98,7 @@ class NewChat(loader: ClassLoader, preferences: SharedPreferences) : Feature(loa
                 activity.getString(R.string.message)
             ) { _, _ ->
                 val number = edt.text.toString()
-                val numberFormatted = number.replace("[+\-()/\s]".toRegex(), "")
+                val numberFormatted = number.replace(Regex("""[+\-()/\s]"""), "")
                 val intent = Intent(Intent.ACTION_VIEW)
                 intent.data = ("https://wa.me/$numberFormatted").toUri()
                 intent.setPackage(Utils.application.packageName)

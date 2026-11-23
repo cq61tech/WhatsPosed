@@ -46,6 +46,7 @@ class MenuHome(classLoader: ClassLoader, preferences: SharedPreferences) :
         hookMenu()
         val action = xprefs.getBoolean("buttonaction", true)
         val useHub = isHubEnabled(xprefs)
+        hubEnabledCache = useHub
 
         // Core quick tools always registered so hub stays complete
         addQuickTool { activity -> buildGhostQuickTool(activity) }
@@ -614,6 +615,12 @@ class MenuHome(classLoader: ClassLoader, preferences: SharedPreferences) :
         const val MENU_ID_QUICK_TOOLS = 0x57505154
         private val menuItems = CopyOnWriteArraySet<HomeMenuItem>()
         private val quickTools = CopyOnWriteArraySet<QuickToolProvider>()
+
+        @Volatile
+        private var hubEnabledCache: Boolean = true
+
+        @JvmStatic
+        fun isHubEnabled(): Boolean = hubEnabledCache
 
         @JvmStatic
         fun isHubEnabled(prefs: SharedPreferences): Boolean =
