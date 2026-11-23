@@ -140,6 +140,7 @@ object FeatureCatalog {
 
         // Home screen preferences.
         add(
+            catalog, context, "quick_tools_hub", R.string.quick_tools_hub_title,
             catalog, context, "buttonaction", R.string.show_menu_buttons_as_icons,
             R.string.show_menu_buttons_as_icons_sum, SearchableFeature.Category.GENERAL_HOMESCREEN,
             general, "homescreen", "menu", "icons", "buttons"

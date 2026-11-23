@@ -567,11 +567,7 @@ class MaterialExpressive(loader: ClassLoader, preferences: SharedPreferences) :
         val isConv = isConversationActivity(activity)
         val palette by lazy { resolvePalette(view.context, config) }
 
-        if (config.styleDialogs && entry in DIALOG_NAMES) {
-            val topOnly = entry.contains("bottom_sheet", ignoreCase = true)
-            applySheetBackground(view, palette.cardHigh, palette.outline, 28f, topOnly, config.cardOutline)
-            return
-        }
+        // ThemedDialogEngine owns Monet / Material Expressive dialogs & bottom sheets
 
         if (config.expressiveFab && isFabView(view, entry)) {
             view.post { runCatching { styleFab(view, palette) } }

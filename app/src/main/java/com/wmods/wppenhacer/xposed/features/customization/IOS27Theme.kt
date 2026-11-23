@@ -656,6 +656,7 @@ class IOS27Theme(loader: ClassLoader, preferences: SharedPreferences) :
             view.tooltipText?.toString().orEmpty().lowercase()
         } else ""
         val title = menuItem?.title?.toString().orEmpty().lowercase()
+        if (menuItem?.itemId == 0x57505154) return true
         val camId = Utils.getID("menuitem_camera", "id")
         if (camId > 0 && (view.id == camId || menuItem?.itemId == camId)) return true
         val combined = "$entry $desc $tooltip $title"

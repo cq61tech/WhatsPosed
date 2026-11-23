@@ -98,10 +98,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
             hookGlobalMiSansTypeface()
         }
 
-        if (config.bottomDialogs) {
-            hookLockedDialogButtonColors()
-            hookMiuiDialogs(config)
-        }
+        // Dialogs are styled universally by ThemedDialogEngine (MIUIx / iOS 27 / Monet)
 
         WppCore.addListenerActivity { activity, state ->
             if (state != WppCore.ActivityChangeState.ChangeType.RESUMED &&

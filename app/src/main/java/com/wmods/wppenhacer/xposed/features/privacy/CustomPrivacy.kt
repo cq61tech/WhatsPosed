@@ -233,17 +233,37 @@ class CustomPrivacy(
         )
         icon.setTint(0xff8696a0.toInt())
 
-        MenuHome.addMenuItem { menu, activity ->
-            menu.add(0, 0, 0, R.string.custom_privacy)
-                .setIcon(icon)
-                .setOnMenuItemClickListener {
-                    showCustomPrivacyList(
-                        activity,
-                        contactInfoActivityClass,
-                        groupInfoActivityClass
-                    )
-                    true
-                }
+        if (MenuHome.isHubEnabled(xprefs)) {
+            MenuHome.addQuickTool { activity ->
+                MenuHome.QuickToolEntry(
+                    id = "custom_privacy",
+                    order = 60,
+                    title = activity.getString(R.string.custom_privacy),
+                    subtitle = activity.getString(R.string.quick_tools_custom_privacy_sum),
+                    icon = icon,
+                    active = null,
+                    onClick = {
+                        showCustomPrivacyList(
+                            activity,
+                            contactInfoActivityClass,
+                            groupInfoActivityClass
+                        )
+                    }
+                )
+            }
+        } else {
+            MenuHome.addMenuItem { menu, activity ->
+                menu.add(0, 0, 0, R.string.custom_privacy)
+                    .setIcon(icon)
+                    .setOnMenuItemClickListener {
+                        showCustomPrivacyList(
+                            activity,
+                            contactInfoActivityClass,
+                            groupInfoActivityClass
+                        )
+                        true
+                    }
+            }
         }
     }
 

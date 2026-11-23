@@ -13,6 +13,7 @@ import com.wmods.wppenhacer.xposed.features.customization.ChatFloatingTools
 import com.wmods.wppenhacer.xposed.features.customization.LiquidGlassChat
 import com.wmods.wppenhacer.xposed.features.customization.IOS27Theme
 import com.wmods.wppenhacer.xposed.features.customization.MIUIxTheme
+import com.wmods.wppenhacer.xposed.features.customization.ThemedDialogEngine
 import com.wmods.wppenhacer.xposed.features.customization.MaterialExpressive
 import com.wmods.wppenhacer.xposed.features.customization.NativeFloatingNavigation
 import com.wmods.wppenhacer.xposed.features.customization.HideSeenView
@@ -100,6 +101,7 @@ internal object FeatureRegistry {
         MaterialExpressive::class.java,
         IOS27Theme::class.java,
         MIUIxTheme::class.java,
+        ThemedDialogEngine::class.java,
         NativeFloatingNavigation::class.java,
         ChatLimit::class.java,
         SeparateGroup::class.java,

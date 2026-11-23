@@ -6,6 +6,12 @@
 
         <rikka.material.preference.MaterialSwitchPreference
             app:defaultValue="true"
+            app:key="quick_tools_hub"
+            app:summary="@string/quick_tools_hub_sum"
+            app:title="@string/quick_tools_hub_title" />
+
+        <rikka.material.preference.MaterialSwitchPreference
+            app:defaultValue="true"
             app:key="buttonaction"
             app:summary="@string/show_menu_buttons_as_icons_sum"
             app:title="@string/show_menu_buttons_as_icons" />

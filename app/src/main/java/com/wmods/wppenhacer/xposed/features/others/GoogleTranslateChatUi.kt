@@ -117,8 +117,19 @@ internal class GoogleTranslateChatUi(
     }
 
     fun install() {
+        MenuHome.addQuickTool { activity ->
+            MenuHome.QuickToolEntry(
+                id = "google_translate",
+                order = 70,
+                title = "Google Translate",
+                subtitle = activity.getString(R.string.quick_tools_translate_sum),
+                icon = DesignUtils.getDrawableByName("ic_settings"),
+                active = null,
+                onClick = { showSettings(activity, null) }
+            )
+        }
         MenuHome.addMenuItem { menu, activity ->
-            if (menu.findItem(R.string.google_translate) == null) {
+            if (!MenuHome.isHubEnabled(xprefs) && menu.findItem(R.string.google_translate) == null) {
                 menu.add(0, R.string.google_translate, 0, "Google Translate")
                     .setOnMenuItemClickListener { showSettings(activity, null); true }
             }

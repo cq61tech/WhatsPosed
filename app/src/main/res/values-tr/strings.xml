@@ -670,4 +670,24 @@
     <string name="miuix_tweak_floating_bar">MIUIx Buzlu Dock Özelleştir</string>
     <string name="wpfb_preset_miuix">MIUIx Buzlu Dock</string>
     <string name="wpfb_preset_miuix_sum">Seçili sekmeyi yumuşak buzlu kapsülle saran geniş yarı saydam MIUI dock</string>
+    <string name="quick_tools_hub_title">Gelişmiş hızlı araç menüsü</string>
+    <string name="quick_tools_hub_sum">Üst çubuktaki WhatsPosed düğmelerini ana ekranda tek bir hızlı araç menüsünde toplar ve her özellik için durum penceresi gösterir</string>
+    <string name="quick_tools_title">Hızlı Araçlar</string>
+    <string name="quick_tools_subtitle">WhatsPosed kısayollarını ve gizlilik modlarını yönet</string>
+    <string name="quick_tools_status_on">AÇIK</string>
+    <string name="quick_tools_status_off">KAPALI</string>
+    <string name="quick_tools_current_state_on">Mevcut durum: Açık</string>
+    <string name="quick_tools_current_state_off">Mevcut durum: Kapalı (Varsayılan)</string>
+    <string name="quick_tools_restart_message">WhatsApp'ı şimdi yeniden başlatarak WhatsPosed ayarlarını uygular ve arayüzü yeniler.</string>
+    <string name="quick_tools_restart_action">Yeniden Başlat</string>
+    <string name="quick_tools_open_settings_sum">WhatsPosed modül ayarlarını aç</string>
+    <string name="quick_tools_new_chat_sum">Rehbere kaydetmeden numarayla sohbet başlat</string>
+    <string name="quick_tools_deleted_sum">Silinen mesaj arşivini görüntüle</string>
+    <string name="quick_tools_custom_privacy_sum">Kişiye özel gizlilik kurallarını yönet</string>
+    <string name="quick_tools_translate_sum">Sohbet çeviri ayarlarını aç</string>
+    <string name="quick_tools_restart_sum">Değişiklikleri uygulamak için yeniden başlat</string>
+    <string name="quick_tools_ghost_sum">Mavi tik, ikinci tik ve son görülmeyi gizle</string>
+    <string name="quick_tools_freeze_sum">Son görülme zamanını sabit tut</string>
+    <string name="quick_tools_dnd_sum">WhatsApp internet bağlantısını duraklat</string>
+    <string name="quick_tools_close">Kapat</string>
 </resources>

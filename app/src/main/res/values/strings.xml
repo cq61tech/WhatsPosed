@@ -744,4 +744,24 @@
     <string name="miuix_tweak_floating_bar">Customize MIUIx Frosted Dock</string>
     <string name="wpfb_preset_miuix">MIUIx Frosted Dock</string>
     <string name="wpfb_preset_miuix_sum">Wide translucent MIUI frosted dock with a glowing rounded active tab pill</string>
+    <string name="quick_tools_hub_title">Unified Quick Tools Hub</string>
+    <string name="quick_tools_hub_sum">Combines WhatsPosed toolbar icons into a single home screen quick tools menu with live status badges and detailed toggle dialogs</string>
+    <string name="quick_tools_title">Quick Tools</string>
+    <string name="quick_tools_subtitle">Manage WhatsPosed shortcuts and privacy modes</string>
+    <string name="quick_tools_status_on">ON</string>
+    <string name="quick_tools_status_off">OFF</string>
+    <string name="quick_tools_current_state_on">Current status: Enabled</string>
+    <string name="quick_tools_current_state_off">Current status: Disabled (Default)</string>
+    <string name="quick_tools_restart_message">Restarts WhatsApp immediately to apply WhatsPosed changes and refresh the interface.</string>
+    <string name="quick_tools_restart_action">Restart</string>
+    <string name="quick_tools_open_settings_sum">Open WhatsPosed module settings</string>
+    <string name="quick_tools_new_chat_sum">Start a chat with an unsaved phone number</string>
+    <string name="quick_tools_deleted_sum">Open deleted messages backup archive</string>
+    <string name="quick_tools_custom_privacy_sum">Manage per-contact privacy rules</string>
+    <string name="quick_tools_translate_sum">Open chat translation settings</string>
+    <string name="quick_tools_restart_sum">Restart WhatsApp to apply changes</string>
+    <string name="quick_tools_ghost_sum">Hide blue ticks, second tick &amp; last seen</string>
+    <string name="quick_tools_freeze_sum">Keep your last seen timestamp frozen</string>
+    <string name="quick_tools_dnd_sum">Pause WhatsApp network traffic</string>
+    <string name="quick_tools_close">Close</string>
 </resources>

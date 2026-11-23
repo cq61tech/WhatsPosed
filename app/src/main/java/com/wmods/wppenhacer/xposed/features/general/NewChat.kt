@@ -14,22 +14,37 @@ import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.extension.kavaref.hook
 import com.wmods.wppenhacer.R
 import com.wmods.wppenhacer.xposed.core.Feature
-import com.wmods.wppenhacer.xposed.features.customization.ThemeCoordinator
 import com.wmods.wppenhacer.xposed.core.WppCore.homeActivityClass
 import com.wmods.wppenhacer.xposed.core.components.AlertDialogWpp
+import com.wmods.wppenhacer.xposed.features.customization.ThemeCoordinator
+import com.wmods.wppenhacer.xposed.features.others.MenuHome
 import com.wmods.wppenhacer.xposed.utils.DesignUtils
 import com.wmods.wppenhacer.xposed.utils.Utils
 
 class NewChat(loader: ClassLoader, preferences: SharedPreferences) : Feature(loader, preferences) {
 
     override fun doHook() {
-        val homeActivity = homeActivityClass
-        val action = xprefs.getBoolean("buttonaction", true)
-
-        if (ThemeCoordinator.isIos27(xprefs) && xprefs.getBoolean("ios27_header_search", true)) return
         if (!xprefs.getBoolean("newchat", true)) return
 
-        homeActivity.resolve().firstMethod {
+        if (MenuHome.isHubEnabled(xprefs)) {
+            MenuHome.addQuickTool { activity ->
+                MenuHome.QuickToolEntry(
+                    id = "new_chat",
+                    order = 40,
+                    title = activity.getString(R.string.new_chat),
+                    subtitle = activity.getString(R.string.quick_tools_new_chat_sum),
+                    icon = DesignUtils.getDrawableByName("vec_ic_chat_add"),
+                    active = null,
+                    onClick = { showNewChatDialog(activity) }
+                )
+            }
+            return
+        }
+
+        if (ThemeCoordinator.isIos27(xprefs) && xprefs.getBoolean("ios27_header_search", true)) return
+        val action = xprefs.getBoolean("buttonaction", true)
+
+        homeActivityClass.resolve().firstMethod {
             name = "onCreateOptionsMenu"
             superclass()
             parameters(Menu::class.java)
@@ -50,45 +65,47 @@ class NewChat(loader: ClassLoader, preferences: SharedPreferences) : Feature(loa
                 }
 
                 item.setOnMenuItemClickListener {
-                    val view = LinearLayout(activity)
-                    view.gravity = Gravity.CENTER
-                    view.layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.MATCH_PARENT
-                    )
-                    val edt = EditText(view.context).apply {
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            1.0f
-                        )
-                        inputType = InputType.TYPE_CLASS_PHONE
-                        transformationMethod = null
-                        setHint(R.string.number_with_country_code)
-                        view.addView(this)
-                    }
-
-
-                    AlertDialogWpp(activity)
-                        .setTitle(activity.getString(R.string.new_chat))
-                        .setView(view)
-                        .setPositiveButton(
-                            activity.getString(R.string.message)
-                        ) { _, _ ->
-                            val number = edt.text.toString()
-                            val numberFomatted =
-                                number.replace("[+\\-()/\\s]".toRegex(), "")
-                            val intent = Intent(Intent.ACTION_VIEW)
-                            intent.data = ("https://wa.me/$numberFomatted").toUri()
-                            intent.setPackage(Utils.application.packageName)
-                            activity.startActivity(intent)
-                        }
-                        .setNegativeButton(activity.getString(R.string.cancel), null)
-                        .show()
+                    showNewChatDialog(activity)
                     true
                 }
             }
         }
+    }
+
+    private fun showNewChatDialog(activity: Activity) {
+        val view = LinearLayout(activity)
+        view.gravity = Gravity.CENTER
+        view.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        )
+        val edt = EditText(view.context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1.0f
+            )
+            inputType = InputType.TYPE_CLASS_PHONE
+            transformationMethod = null
+            setHint(R.string.number_with_country_code)
+            view.addView(this)
+        }
+
+        AlertDialogWpp(activity)
+            .setTitle(activity.getString(R.string.new_chat))
+            .setView(view)
+            .setPositiveButton(
+                activity.getString(R.string.message)
+            ) { _, _ ->
+                val number = edt.text.toString()
+                val numberFormatted = number.replace("[+\-()/\s]".toRegex(), "")
+                val intent = Intent(Intent.ACTION_VIEW)
+                intent.data = ("https://wa.me/$numberFormatted").toUri()
+                intent.setPackage(Utils.application.packageName)
+                activity.startActivity(intent)
+            }
+            .setNegativeButton(activity.getString(R.string.cancel), null)
+            .show()
     }
 
     public override fun getPluginName(): String {

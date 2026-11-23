@@ -144,7 +144,21 @@ class DeletedBackupViewer(
         if (!xprefs.getBoolean("deleted_message_capture", false)) return
 
         if (MENU_ITEM_ADDED.compareAndSet(false, true)) {
-            MenuHome.addMenuItem { menu, activity -> insertViewerMenuItem(menu, activity) }
+            if (MenuHome.isHubEnabled(xprefs)) {
+                MenuHome.addQuickTool { activity ->
+                    MenuHome.QuickToolEntry(
+                        id = "deleted_backup_viewer",
+                        order = 50,
+                        title = activity.getString(R.string.deleted_message_notification_channel),
+                        subtitle = activity.getString(R.string.quick_tools_deleted_sum),
+                        icon = activity.getDrawable(R.drawable.ic_delete),
+                        active = null,
+                        onClick = { authenticateAndOpenViewer(activity) }
+                    )
+                }
+            } else {
+                MenuHome.addMenuItem { menu, activity -> insertViewerMenuItem(menu, activity) }
+            }
         }
 
         val aboutClass = WppCore.aboutActivityClass
