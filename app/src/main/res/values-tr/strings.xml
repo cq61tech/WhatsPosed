@@ -678,7 +678,7 @@
     <string name="quick_tools_status_off">KAPALI</string>
     <string name="quick_tools_current_state_on">Mevcut durum: Açık</string>
     <string name="quick_tools_current_state_off">Mevcut durum: Kapalı (Varsayılan)</string>
-    <string name="quick_tools_restart_message">WhatsApp'ı şimdi yeniden başlatarak WhatsPosed ayarlarını uygular ve arayüzü yeniler.</string>
+    <string name="quick_tools_restart_message">WhatsApp uygulamasını şimdi yeniden başlatarak WhatsPosed ayarlarını uygular ve arayüzü yeniler.</string>
     <string name="quick_tools_restart_action">Yeniden Başlat</string>
     <string name="quick_tools_open_settings_sum">WhatsPosed modül ayarlarını aç</string>
     <string name="quick_tools_new_chat_sum">Rehbere kaydetmeden numarayla sohbet başlat</string>
