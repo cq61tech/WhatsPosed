@@ -11,22 +11,25 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
+import android.text.Spanned
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.extension.kavaref.hook
 import com.highcapable.yukihookapi.extension.kavaref.hookAll
 import com.wmods.wppenhacer.xposed.core.Feature
 import com.wmods.wppenhacer.xposed.core.FeatureLoader
@@ -34,6 +37,7 @@ import com.wmods.wppenhacer.xposed.core.ViewHookDispatcher
 import com.wmods.wppenhacer.xposed.core.WppCore
 import com.wmods.wppenhacer.xposed.utils.Utils
 import java.util.Collections
+import java.util.Locale
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,6 +52,9 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
         val surfaceSecondary: Int,
         val dialogBg: Int,
         val dialogBorder: Int,
+        val dialogBtnSecondaryBg: Int,
+        val dialogBtnSecondaryFg: Int,
+        val dialogDanger: Int,
         val accent: Int,
         val accentSoft: Int,
         val textPrimary: Int,
@@ -57,6 +64,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
         val chipStroke: Int,
         val inputBg: Int,
         val inputBorder: Int,
+        val divider: Int,
     )
 
     private data class Config(
@@ -69,6 +77,8 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
 
     private val idNameCache = ConcurrentHashMap<Int, String>()
     private val styledViews = Collections.newSetFromMap(WeakHashMap<View, Boolean>())
+    private val lockedButtonTextColors = WeakHashMap<TextView, Int>()
+    @Volatile private var hasLockedButtonColors = false
 
     @Volatile private var fontsLoaded = false
     @Volatile private var miRegular: Typeface? = null
@@ -89,6 +99,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
         }
 
         if (config.bottomDialogs) {
+            hookLockedDialogButtonColors()
             hookMiuiDialogs(config)
         }
 
@@ -121,7 +132,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
         val accent = if (config.accentGreen) {
             if (dark) 0xFF2CE072.toInt() else 0xFF25D366.toInt()
         } else {
-            if (dark) 0xFF2196FF.toInt() else 0xFF0D84FF.toInt()
+            if (dark) 0xFF1F93FF.toInt() else 0xFF0D84FF.toInt()
         }
         val accentSoft = ColorUtils.setAlphaComponent(accent, if (dark) 52 else 34)
         return if (dark) {
@@ -131,17 +142,21 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                 canvas = 0xFF000000.toInt(),
                 surface = if (config.wallpaperActive) 0x66161B24.toInt() else 0xFF17181B.toInt(),
                 surfaceSecondary = if (config.wallpaperActive) 0x4D232A36.toInt() else 0xFF23252A.toInt(),
-                dialogBg = 0xFA222326.toInt(),
-                dialogBorder = 0x26FFFFFF.toInt(),
+                dialogBg = 0xFF222226.toInt(),
+                dialogBorder = 0x1FFFFFFF.toInt(),
+                dialogBtnSecondaryBg = 0xFF36383E.toInt(),
+                dialogBtnSecondaryFg = 0xFFF3F5F8.toInt(),
+                dialogDanger = 0xFFF24848.toInt(),
                 accent = accent,
                 accentSoft = accentSoft,
                 textPrimary = 0xFFF7F8FA.toInt(),
-                textSecondary = 0xB8DDE2EC.toInt(),
+                textSecondary = 0xCCD5DAE3.toInt(),
                 chipBg = if (config.wallpaperActive) 0x4AFFFFFF.toInt() else 0xFF1D1F24.toInt(),
                 chipSelectedBg = if (config.wallpaperActive) 0x6EFFFFFF.toInt() else accentSoft,
                 chipStroke = ColorUtils.setAlphaComponent(accent, 225),
                 inputBg = 0xE61B1D22.toInt(),
                 inputBorder = 0x33FFFFFF.toInt(),
+                divider = 0x1AFFFFFF.toInt(),
             )
         } else {
             MiuixPalette(
@@ -150,17 +165,21 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                 canvas = 0xFFFFFFFF.toInt(),
                 surface = if (config.wallpaperActive) 0x80FFFFFF.toInt() else 0xFFF5F6F8.toInt(),
                 surfaceSecondary = if (config.wallpaperActive) 0x66F0F4FA.toInt() else 0xFFECEFF4.toInt(),
-                dialogBg = 0xFCFFFFFF.toInt(),
-                dialogBorder = 0x18000000.toInt(),
+                dialogBg = 0xFFFFFFFF.toInt(),
+                dialogBorder = 0x14000000.toInt(),
+                dialogBtnSecondaryBg = 0xFFF0F2F5.toInt(),
+                dialogBtnSecondaryFg = 0xFF1A1C20.toInt(),
+                dialogDanger = 0xFFFA3E3E.toInt(),
                 accent = accent,
                 accentSoft = accentSoft,
                 textPrimary = 0xFF121417.toInt(),
-                textSecondary = 0xA8222832.toInt(),
+                textSecondary = 0xB8282E38.toInt(),
                 chipBg = if (config.wallpaperActive) 0x70FFFFFF.toInt() else 0xFFF0F2F5.toInt(),
                 chipSelectedBg = if (config.wallpaperActive) 0xB8FFFFFF.toInt() else accentSoft,
                 chipStroke = accent,
                 inputBg = 0xFFF3F5F8.toInt(),
                 inputBorder = 0x20000000.toInt(),
+                divider = 0x14000000.toInt(),
             )
         }
     }
@@ -212,12 +231,40 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     val replacement = resolveMiSans(orig, styleInt) ?: return@before
                     args[0] = replacement
                     if (args.size >= 2) {
-                        val italic = styleInt and Typeface.ITALIC
-                        args[1] = italic
+                        args[1] = styleInt and Typeface.ITALIC
                     }
                 }
             }
         }
+    }
+
+    private fun hookLockedDialogButtonColors() {
+        runCatching {
+            TextView::class.java.resolve().method {
+                name = "setTextColor"
+            }.hookAll {
+                before {
+                    if (!hasLockedButtonColors || args.isEmpty()) return@before
+                    val tv = instance as? TextView ?: return@before
+                    val locked = synchronized(lockedButtonTextColors) { lockedButtonTextColors[tv] } ?: return@before
+                    when (args[0]) {
+                        is Int -> if (args[0] != locked) args[0] = locked
+                        is ColorStateList -> args[0] = ColorStateList.valueOf(locked)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun lockButtonTextColor(tv: TextView, color: Int) {
+        synchronized(lockedButtonTextColors) {
+            lockedButtonTextColors[tv] = color
+            hasLockedButtonColors = true
+        }
+        if (tv.text is Spanned) {
+            tv.text = tv.text.toString()
+        }
+        tv.setTextColor(ColorStateList.valueOf(color))
     }
 
     private fun hookMiuiDialogs(config: Config) {
@@ -232,9 +279,32 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     decor.post {
                         runCatching { styleMiuiDialog(dialog, config) }
                     }
+                    decor.postDelayed({
+                        runCatching {
+                            if (dialog.isShowing) styleMiuiDialog(dialog, config)
+                        }
+                    }, 70L)
                 }
             }
         }
+    }
+
+    private fun findDialogView(root: View, ctx: Context, entryName: String): View? {
+        val pkgId = ctx.resources.getIdentifier(entryName, "id", ctx.packageName)
+        if (pkgId > 0) root.findViewById<View>(pkgId)?.let { return it }
+        val sysId = ctx.resources.getIdentifier(entryName, "id", "android")
+        if (sysId > 0) root.findViewById<View>(sysId)?.let { return it }
+        return null
+    }
+
+    private fun isDestructivePrompt(title: String, positiveText: String): Boolean {
+        val combined = "$title $positiveText".lowercase(Locale.ROOT)
+        val keywords = listOf(
+            "sil", "kaldır", "kaldir", "temizle", "engelle", "çıkış", "cikis", "sıfırla", "sifirla",
+            "risk", "tehlike", "hata", "uyarı", "uyari",
+            "delete", "remove", "clear", "block", "erase", "reset", "uninstall", "report", "discard"
+        )
+        return keywords.any { it in combined }
     }
 
     private fun styleMiuiDialog(dialog: Dialog, config: Config) {
@@ -247,64 +317,234 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
         val p = palette(ctx, config)
         val decor = window.decorView as? ViewGroup ?: return
 
-        val parentPanel = decor.findViewById<View>(ctx.resources.getIdentifier("parentPanel", "id", "android"))
-            ?: decor.findViewById<View>(Utils.getID("parentPanel", "id"))
-            ?: return
+        val parentPanel = findDialogView(decor, ctx, "parentPanel")
+        val bottomSheet = if (parentPanel == null) findDialogView(decor, ctx, "design_bottom_sheet") else null
+        if (parentPanel == null && bottomSheet == null) return
 
-        val marginH = Utils.dipToPixels(14f)
-        val marginB = Utils.dipToPixels(16f)
+        // Handle Material BottomSheetDialogs (option / select sheets)
+        if (bottomSheet != null) {
+            val topR = Utils.dipToPixels(28f).toFloat()
+            bottomSheet.backgroundTintList = null
+            bottomSheet.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadii = floatArrayOf(topR, topR, topR, topR, 0f, 0f, 0f, 0f)
+                setColor(p.dialogBg)
+                setStroke(Utils.dipToPixels(1f).coerceAtLeast(1), p.dialogBorder)
+            }
+            if (config.miSans) applyMiSansTree(bottomSheet, 0)
+            return
+        }
+
+        val card = parentPanel!!
         val dm = ctx.resources.displayMetrics
+        val sideMargin = Utils.dipToPixels(12f)
+        val bottomMargin = Utils.dipToPixels(14f)
 
         window.setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val targetWidth = (dm.widthPixels - marginH * 2).coerceAtLeast(Utils.dipToPixels(280f))
+        val targetWidth = (dm.widthPixels - sideMargin * 2).coerceAtLeast(Utils.dipToPixels(280f))
         window.setLayout(targetWidth, WindowManager.LayoutParams.WRAP_CONTENT)
         val attrs = window.attributes
-        attrs.y = marginB
-        attrs.dimAmount = if (p.dark) 0.58f else 0.42f
+        attrs.y = bottomMargin
+        attrs.dimAmount = if (p.dark) 0.56f else 0.38f
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             runCatching {
                 window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                attrs.blurBehindRadius = Utils.dipToPixels(20f)
+                attrs.blurBehindRadius = Utils.dipToPixels(22f)
             }
         }
         window.attributes = attrs
 
-        val corner = Utils.dipToPixels(28f).toFloat()
-        parentPanel.background = GradientDrawable().apply {
+        // Clear any nested default backgrounds so there are no boxed sub-panels
+        listOf(
+            "topPanel", "title_template", "contentPanel", "scrollView",
+            "customPanel", "custom", "buttonPanel"
+        ).forEach { panelName ->
+            findDialogView(card, ctx, panelName)?.let { sub ->
+                sub.background = null
+                sub.backgroundTintList = null
+            }
+        }
+
+        // Seamless MIUI 12-14 bottom-floating rounded card
+        card.backgroundTintList = null
+        card.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = corner
+            cornerRadius = Utils.dipToPixels(30f).toFloat()
             setColor(p.dialogBg)
             setStroke(Utils.dipToPixels(1f).coerceAtLeast(1), p.dialogBorder)
         }
-        val pad = Utils.dipToPixels(10f)
-        parentPanel.setPadding(pad, Utils.dipToPixels(14f), pad, Utils.dipToPixels(14f))
+        val padH = Utils.dipToPixels(22f)
+        card.setPadding(padH, Utils.dipToPixels(24f), padH, Utils.dipToPixels(20f))
 
-        // Style dialog buttons as MIUI 14 wide rounded pills
-        val positiveId = android.R.id.button1
-        val negativeId = android.R.id.button2
-        val neutralId = android.R.id.button3
-        listOf(positiveId, negativeId, neutralId).forEach { bid ->
-            val btn = decor.findViewById<View>(bid) as? Button ?: return@forEach
-            if (btn.visibility != View.VISIBLE) return@forEach
-            val isPrimary = bid == positiveId
-            btn.isAllCaps = false
-            btn.minHeight = Utils.dipToPixels(46f)
-            btn.setPadding(Utils.dipToPixels(18f), Utils.dipToPixels(10f), Utils.dipToPixels(18f), Utils.dipToPixels(10f))
-            btn.background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = Utils.dipToPixels(18f).toFloat()
-                setColor(if (isPrimary) p.accent else p.surfaceSecondary)
+        // Title styling (centered MIUI bold header)
+        val titleTv = findDialogView(card, ctx, "alertTitle") as? TextView
+        val titleStr = titleTv?.text?.toString()?.trim().orEmpty()
+        if (titleTv != null && titleStr.isNotEmpty()) {
+            titleTv.gravity = Gravity.CENTER_HORIZONTAL
+            titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            titleTv.setTextColor(p.textPrimary)
+            if (config.miSans) (miSemibold ?: miBold)?.let { titleTv.typeface = it }
+            (titleTv.parent as? ViewGroup)?.let { tp ->
+                tp.setPadding(0, 0, 0, Utils.dipToPixels(10f))
             }
-            btn.setTextColor(if (isPrimary) Color.WHITE else p.textPrimary)
-            if (config.miSans) {
-                miSemibold?.let { btn.typeface = it }
+        }
+
+        // Message styling (clean MIUI readable body)
+        val msgTv = (card.findViewById<View>(android.R.id.message) ?: findDialogView(card, ctx, "message")) as? TextView
+        if (msgTv != null && msgTv.visibility == View.VISIBLE) {
+            val txt = msgTv.text?.toString()?.trim().orEmpty()
+            msgTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            msgTv.setTextColor(if (titleStr.isEmpty()) p.textPrimary else p.textSecondary)
+            msgTv.setLineSpacing(Utils.dipToPixels(4f).toFloat(), 1f)
+            msgTv.setPadding(0, Utils.dipToPixels(4f), 0, Utils.dipToPixels(6f))
+            if (txt.length <= 220 && "\n•" !in txt && "\n-" !in txt) {
+                msgTv.gravity = Gravity.CENTER_HORIZONTAL
             }
-            (btn.layoutParams as? ViewGroup.MarginLayoutParams)?.let { mlp ->
+            if (config.miSans) miRegular?.let { msgTv.typeface = it }
+        }
+
+        // Select / choice ListView styling inside dialogs
+        val listView = (findDialogView(card, ctx, "select_dialog_listview")
+            ?: card.findViewById<View>(android.R.id.list)) as? ListView
+        if (listView != null) {
+            listView.divider = ColorDrawable(p.divider)
+            listView.dividerHeight = Utils.dipToPixels(0.8f).coerceAtLeast(1)
+            listView.overScrollMode = View.OVER_SCROLL_NEVER
+            listView.setPadding(0, Utils.dipToPixels(4f), 0, Utils.dipToPixels(6f))
+            for (i in 0 until listView.childCount) {
+                val row = listView.getChildAt(i)
+                row.setPadding(
+                    Utils.dipToPixels(8f),
+                    Utils.dipToPixels(13f),
+                    Utils.dipToPixels(8f),
+                    Utils.dipToPixels(13f)
+                )
+                if (row is TextView) {
+                    row.setTextColor(p.textPrimary)
+                    row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                    if (config.miSans) miRegular?.let { row.typeface = it }
+                } else if (row is ViewGroup) {
+                    walkViews(row, 0, 4) { ch ->
+                        if (ch is TextView) {
+                            ch.setTextColor(p.textPrimary)
+                            if (config.miSans) miRegular?.let { ch.typeface = it }
+                        }
+                        if (ch is CompoundButton) {
+                            ch.buttonTintList = ColorStateList.valueOf(p.accent)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Authentic MIUI 12-14 full-width oval pill buttons (50/50 side-by-side or clean vertical stack)
+        val btnNeg = card.findViewById<View>(android.R.id.button2) as? Button
+        val btnNeu = card.findViewById<View>(android.R.id.button3) as? Button
+        val btnPos = card.findViewById<View>(android.R.id.button1) as? Button
+
+        val visibleButtons = listOfNotNull(btnNeg, btnNeu, btnPos)
+            .filter { it.visibility == View.VISIBLE && !it.text.isNullOrBlank() }
+
+        if (visibleButtons.isNotEmpty()) {
+            val buttonBar = visibleButtons.first().parent as? LinearLayout
+            val buttonPanel = findDialogView(card, ctx, "buttonPanel")
+            buttonPanel?.setPadding(0, Utils.dipToPixels(18f), 0, 0)
+
+            if (buttonBar != null) {
+                buttonBar.background = null
+                buttonBar.backgroundTintList = null
+                buttonBar.setPadding(0, 0, 0, 0)
+                buttonBar.gravity = Gravity.CENTER
+                buttonBar.layoutParams?.let { blp ->
+                    blp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                    buttonBar.layoutParams = blp
+                }
+
+                // Hide Android's invisible spacer view(s) that shove buttons to the right
+                for (i in 0 until buttonBar.childCount) {
+                    val ch = buttonBar.getChildAt(i)
+                    if (ch !is Button) {
+                        ch.visibility = View.GONE
+                    }
+                }
+
+                val posText = btnPos?.text?.toString().orEmpty()
+                val destructive = isDestructivePrompt(titleStr, posText)
+                val pillHeight = Utils.dipToPixels(48f)
                 val gap = Utils.dipToPixels(6f)
-                mlp.setMargins(gap, gap, gap, gap)
-                btn.layoutParams = mlp
+                val vGap = Utils.dipToPixels(10f)
+
+                val stackVertically = visibleButtons.size >= 3 ||
+                    visibleButtons.any { (it.text?.length ?: 0) > 16 }
+
+                buttonBar.orientation = if (stackVertically) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                buttonBar.weightSum = if (stackVertically) -1f else visibleButtons.size.toFloat()
+
+                // Reorder cleanly inside buttonBar: Negative on left, Positive on right (or Positive on bottom if vertical)
+                val ordered = if (stackVertically) {
+                    listOfNotNull(btnPos, btnNeu, btnNeg).filter { it in visibleButtons }
+                } else {
+                    listOfNotNull(btnNeg, btnNeu, btnPos).filter { it in visibleButtons }
+                }
+                ordered.forEach { btn ->
+                    buttonBar.removeView(btn)
+                    buttonBar.addView(btn)
+                }
+
+                ordered.forEachIndexed { idx, btn ->
+                    val isPrimary = btn === btnPos
+                    val bgColor = when {
+                        isPrimary && destructive -> p.dialogDanger
+                        isPrimary -> p.accent
+                        else -> p.dialogBtnSecondaryBg
+                    }
+                    val fgColor = if (isPrimary) Color.WHITE else p.dialogBtnSecondaryFg
+
+                    btn.backgroundTintList = null
+                    btn.stateListAnimator = null
+                    btn.elevation = 0f
+                    btn.isAllCaps = false
+                    btn.gravity = Gravity.CENTER
+                    btn.maxLines = 1
+                    btn.ellipsize = TextUtils.TruncateAt.END
+                    btn.minWidth = 0
+                    btn.minimumWidth = 0
+                    btn.minHeight = pillHeight
+                    btn.minimumHeight = pillHeight
+                    btn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    btn.setPadding(Utils.dipToPixels(16f), 0, Utils.dipToPixels(16f), 0)
+                    btn.background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 999f
+                        setColor(bgColor)
+                    }
+                    if (config.miSans) {
+                        (miSemibold ?: miBold)?.let { btn.typeface = it }
+                    }
+                    lockButtonTextColor(btn, fgColor)
+
+                    val blp = if (stackVertically) {
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, pillHeight).apply {
+                            setMargins(0, if (idx == 0) 0 else vGap, 0, 0)
+                        }
+                    } else {
+                        LinearLayout.LayoutParams(0, pillHeight, 1f).apply {
+                            setMargins(
+                                if (idx == 0) 0 else gap,
+                                0,
+                                if (idx == ordered.lastIndex) 0 else gap,
+                                0
+                            )
+                        }
+                    }
+                    btn.layoutParams = blp
+                }
             }
+        }
+
+        if (config.miSans) {
+            applyMiSansTree(card, 0)
         }
     }
 
@@ -341,7 +581,6 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
             if (config.wallpaperActive) {
                 toolbar.background = null
             }
-            // Frosted circular action buttons on top right when wallpaper is active
             walkViews(toolbar, 0, 5) { v ->
                 if (v is TextView && config.miSans) {
                     miBold?.let { v.typeface = it }
@@ -375,25 +614,21 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
 
         val name = idName(view) ?: return
 
-        // 1) MIUI Squircle FAB on Home & lists
         if (config.squircleAndInput && isFabView(view, name)) {
             styleSquircleFab(view, p)
             return
         }
 
-        // 2) Filter chips (All / Unread / Groups) -> MIUI frosted pills with crisp accent stroke when selected
         if (isFilterChip(view, name)) {
             styleMiuiChip(view, p)
             return
         }
 
-        // 3) Chat input bar -> MIUI rounded capsule with blue/green focus border
         if (config.squircleAndInput && isChatInputContainer(view, name)) {
             styleMiuiChatInput(view, p)
             return
         }
 
-        // 4) Search pill on Home / Settings
         if (isSearchPill(name)) {
             styleMiuiSearchBar(view, p)
         }
