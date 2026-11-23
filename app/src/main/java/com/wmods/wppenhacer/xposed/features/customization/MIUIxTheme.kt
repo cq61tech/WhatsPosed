@@ -277,7 +277,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     val window = dialog.window ?: return@after
                     val decor = window.decorView ?: return@after
                     decor.post {
-                        runCatching { styleMiuiDialog(dialog, config) }
+                        runCatching { styleMiuiDialog(dialog, config) }.onFailure { android.util.Log.e("MIUIxTheme", "dialog err", it) }
                     }
                     decor.postDelayed({
                         runCatching {
@@ -484,17 +484,41 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
             .filter { (it.visibility == View.VISIBLE || it.tag == "miuix_proxied") && !it.text.isNullOrBlank() }
 
         val buttonPanel = findDialogView(card, ctx, "buttonPanel") as? ViewGroup
-        val cardGroup = card as? ViewGroup
-        if (visibleButtons.isNotEmpty() && cardGroup != null) {
-            buttonPanel?.visibility = View.GONE
-            cardGroup.findViewWithTag<View>("miuix_btn_row")?.let { cardGroup.removeView(it) }
+        val buttonBar = visibleButtons.firstOrNull()?.parent as? ViewGroup
+        if (visibleButtons.isNotEmpty() && buttonBar != null) {
+            buttonPanel?.visibility = View.VISIBLE
+            buttonPanel?.minimumHeight = 0
+            buttonPanel?.setPadding(padH, Utils.dipToPixels(16f), padH, 0)
+
+            buttonBar.visibility = View.VISIBLE
+            buttonBar.background = null
+            buttonBar.backgroundTintList = null
+            buttonBar.minimumHeight = 0
+            buttonBar.setPadding(0, 0, 0, 0)
+            if (buttonBar is LinearLayout) {
+                buttonBar.orientation = LinearLayout.VERTICAL
+                buttonBar.gravity = Gravity.CENTER_HORIZONTAL
+            }
+
+            buttonBar.findViewWithTag<View>("miuix_btn_row")?.let { buttonBar.removeView(it) }
+            for (i in 0 until buttonBar.childCount) {
+                val ch = buttonBar.getChildAt(i)
+                ch.visibility = View.GONE
+                if (ch !is Button) {
+                    (ch.layoutParams as? LinearLayout.LayoutParams)?.let { slp ->
+                        slp.width = 0
+                        slp.height = 0
+                        slp.weight = 0f
+                        ch.layoutParams = slp
+                    }
+                }
+            }
             visibleButtons.forEach { it.tag = "miuix_proxied" }
 
             val posText = btnPos?.text?.toString().orEmpty()
             val destructive = isDestructivePrompt(titleStr, posText)
             val pillHeight = Utils.dipToPixels(46f)
-            val gap = Utils.dipToPixels(6f)
-            val vGap = Utils.dipToPixels(10f)
+            val gap = Utils.dipToPixels(10f)
             val stackVertically = visibleButtons.size >= 3 ||
                 visibleButtons.any { (it.text?.length ?: 0) > 16 }
 
@@ -504,14 +528,23 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                 listOfNotNull(btnNeg, btnNeu, btnPos).filter { it in visibleButtons }
             }
 
+            val cardW = card.width
+            val availW = if (cardW > Utils.dipToPixels(180f)) {
+                cardW - padH * 2
+            } else {
+                (targetWidth - padH * 2 - Utils.dipToPixels(8f)).coerceAtLeast(Utils.dipToPixels(220f))
+            }
+
             val miuiRow = LinearLayout(ctx).apply {
                 tag = "miuix_btn_row"
                 orientation = if (stackVertically) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
+            }
+
+            val pillW = if (stackVertically) {
+                availW
+            } else {
+                ((availW - gap * (ordered.size - 1)) / ordered.size).coerceAtLeast(Utils.dipToPixels(84f))
             }
 
             ordered.forEachIndexed { idx, origBtn ->
@@ -521,7 +554,8 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     isPrimary -> p.accent
                     else -> p.dialogBtnSecondaryBg
                 }
-                val fgColor = if (isPrimary) Color.WHITE else p.dialogBtnSecondaryFg
+                // #FEFEFE avoids exact #FFFFFF remapping by CustomThemeV2 in light mode
+                val fgColor = if (isPrimary) 0xFFFEFEFE.toInt() else p.dialogBtnSecondaryFg
 
                 val pill = TextView(ctx).apply {
                     text = origBtn.text?.toString().orEmpty()
@@ -531,7 +565,7 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                     setTextColor(fgColor)
                     if (config.miSans) (miSemibold ?: miBold)?.let { typeface = it }
-                    setPadding(Utils.dipToPixels(16f), 0, Utils.dipToPixels(16f), 0)
+                    setPadding(Utils.dipToPixels(14f), 0, Utils.dipToPixels(14f), 0)
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
                         cornerRadius = 999f
@@ -542,30 +576,22 @@ class MIUIxTheme(loader: ClassLoader, preferences: SharedPreferences) :
                     setOnClickListener { origBtn.performClick() }
                 }
 
-                val plp = if (stackVertically) {
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, pillHeight).apply {
-                        setMargins(0, if (idx == 0) 0 else vGap, 0, 0)
-                    }
-                } else {
-                    LinearLayout.LayoutParams(0, pillHeight, 1f).apply {
-                        setMargins(
-                            if (idx == 0) 0 else gap,
-                            0,
-                            if (idx == ordered.lastIndex) 0 else gap,
-                            0
-                        )
+                val plp = LinearLayout.LayoutParams(pillW, pillHeight).apply {
+                    if (stackVertically) {
+                        setMargins(0, if (idx == 0) 0 else gap, 0, 0)
+                    } else {
+                        setMargins(if (idx == 0) 0 else gap, 0, 0, 0)
                     }
                 }
                 miuiRow.addView(pill, plp)
             }
 
-            val rowLp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(padH, Utils.dipToPixels(18f), padH, 0)
-            }
-            cardGroup.addView(miuiRow, rowLp)
+            buttonBar.addView(
+                miuiRow,
+                LinearLayout.LayoutParams(availW, ViewGroup.LayoutParams.WRAP_CONTENT)
+            )
+            buttonBar.requestLayout()
+            card.requestLayout()
         }
 
         if (config.miSans) {
