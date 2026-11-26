@@ -53,6 +53,7 @@ class MainActivity : BaseActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+        binding.root.post { com.wmods.wppenhacer.utils.CqStorePrompt.showIfNeeded(this) }
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val pageCount = if (prefs.getBoolean("call_recording_enable", false)) 6 else 5
