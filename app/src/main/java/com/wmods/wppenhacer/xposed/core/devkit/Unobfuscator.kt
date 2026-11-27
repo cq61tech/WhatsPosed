@@ -1659,9 +1659,15 @@ object Unobfuscator {
                 "com.whatsapp.conversationslist.ConversationsFragment",
                 loader
             )
-            Arrays.stream(clazz.declaredMethods).filter { m ->
-                m.parameterCount == 3 && m.returnType == View::class.java && LayoutInflater::class.java in m.parameterTypes
-            }.findFirst().orElse(null)
+            generateSequence(clazz) { it.superclass }
+                .takeWhile { it.name.contains("ConversationsFragment") }
+                .firstNotNullOfOrNull { c ->
+                    c.declaredMethods.firstOrNull { m ->
+                        m.parameterCount == 3 &&
+                            m.returnType == View::class.java &&
+                            LayoutInflater::class.java in m.parameterTypes
+                    }
+                }
                 ?: throw RuntimeException("GetViewConversation method not found")
         }
     }
